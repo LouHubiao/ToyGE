@@ -21,6 +21,7 @@ namespace ToyGE
 
         public static unsafe bool Count_Statistic(IntPtr curAddr, Int64 noUse1, Int64 noUse2)
         {
+
             return true;
         }
     }

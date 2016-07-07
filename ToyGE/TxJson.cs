@@ -68,62 +68,6 @@ namespace ToyGE
             return JSONBack;
         }
 
-        //convert jsonback to byte[]
-        public byte[] ConvertTobytes()
-        {
-            byte[] result = new byte[0];
-            int sumCount = 0;
-            result = Combine(result, BitConverter.GetBytes(this.CellID));
-            sumCount += 8;
-
-            result = Combine(result, BitConverter.GetBytes(this.hash.Length));
-            sumCount += 4;
-
-            result = Combine(result, System.Text.Encoding.ASCII.GetBytes(this.hash));
-            sumCount += this.hash.Length;
-
-            result = Combine(result, BitConverter.GetBytes(this.time));
-            sumCount += 8;
-
-            result = Combine(result, BitConverter.GetBytes(this.ins.Count));
-            sumCount += 4;
-            foreach (Input _in in this.ins)
-            {
-                result = Combine(result, BitConverter.GetBytes(_in.addr.Length));
-                sumCount += 4;
-                result = Combine(result, System.Text.Encoding.ASCII.GetBytes(_in.addr));
-                sumCount += _in.addr.Length;
-                result = Combine(result, BitConverter.GetBytes(_in.tx_index));
-                sumCount += 8;
-            }
-
-            result = Combine(result, BitConverter.GetBytes(this.outs.Count));
-            sumCount += 4;
-            foreach (string _out in this.outs)
-            {
-                result = Combine(result, BitConverter.GetBytes(_out.Length));
-                sumCount += 4;
-                result = Combine(result, System.Text.Encoding.ASCII.GetBytes(_out));
-                sumCount += _out.Length;
-            }
-
-            result = Combine(result, BitConverter.GetBytes(this.amount));
-            sumCount += 8;
-
-            sumCount += 4;
-            result = Combine(BitConverter.GetBytes(sumCount), result);
-
-            return result;
-        }
-
-        static byte[] Combine(byte[] first, byte[] second)
-        {
-            byte[] ret = new byte[first.Length + second.Length];
-            Buffer.BlockCopy(first, 0, ret, 0, first.Length);
-            Buffer.BlockCopy(second, 0, ret, first.Length, second.Length);
-            return ret;
-        }
-
         public override string ToString()
         {
             StringBuilder strBuilder = new StringBuilder();
