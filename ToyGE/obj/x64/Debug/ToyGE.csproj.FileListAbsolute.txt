@@ -1,0 +1,7 @@
+C:\Users\v-hulou\Documents\Visual Studio 2015\Projects\ToyGE\ToyGE\bin\x64\Debug\ToyGE.exe.config
+C:\Users\v-hulou\Documents\Visual Studio 2015\Projects\ToyGE\ToyGE\bin\x64\Debug\ToyGE.exe
+C:\Users\v-hulou\Documents\Visual Studio 2015\Projects\ToyGE\ToyGE\bin\x64\Debug\ToyGE.pdb
+C:\Users\v-hulou\Documents\Visual Studio 2015\Projects\ToyGE\ToyGE\obj\x64\Debug\ToyGE.exe
+C:\Users\v-hulou\Documents\Visual Studio 2015\Projects\ToyGE\ToyGE\obj\x64\Debug\ToyGE.pdb
+C:\Users\v-hulou\Documents\Visual Studio 2015\Projects\ToyGE\ToyGE\bin\x64\Debug\Newtonsoft.Json.dll
+C:\Users\v-hulou\Documents\Visual Studio 2015\Projects\ToyGE\ToyGE\bin\x64\Debug\Newtonsoft.Json.xml
