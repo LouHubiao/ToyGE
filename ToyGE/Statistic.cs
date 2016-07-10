@@ -10,8 +10,7 @@ namespace ToyGE
     {
         public static unsafe bool Amount_Statistic(IntPtr curAddr, Int64 stdAmount, Int64 noUse)
         {
-            int* length = (int*)(curAddr.ToPointer());
-            Int64* amount = (Int64*)(curAddr.ToInt64() + *length - sizeof(Int64));
+            Int64* amount = (Int64*)((curAddr + 37).ToPointer());
             if (*amount >= stdAmount)
             {
                 return true;
@@ -21,7 +20,6 @@ namespace ToyGE
 
         public static unsafe bool Count_Statistic(IntPtr curAddr, Int64 noUse1, Int64 noUse2)
         {
-
             return true;
         }
     }

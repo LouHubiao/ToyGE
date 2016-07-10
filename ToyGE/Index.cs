@@ -23,7 +23,7 @@ namespace ToyGE
         public List<BTreeNode> kids = new List<BTreeNode>();
     }
 
-    class BTree
+    class Index
     {
         const int MAX_KEYS = 1024;
 
