@@ -18,15 +18,17 @@ using Newtonsoft.Json;
     }
 
     hash{
-        strLen      int32
         status      byte
+        strLen      int32
+        strMaxLen   int32
         nextPart    Int64
         context     char[]
     }
 
     ins{
-        listLen     int32
         status      byte
+        listLen     int32
+        listMaxLen  int32
         nextPart    Int64
         in_1        int32   // =>in
         ...
@@ -40,15 +42,17 @@ using Newtonsoft.Json;
     }
 
     in_addr{
-        strLen      int32
         status      byte
+        strLen      int32
+        strMaxLen   int32
         nextPart    Int64
         context     char[]
     }
 
     outs{
-        listLen     int32
         status      byte
+        listLen     int32
+        listMaxLen  int32
         nextPart    Int64
         out_1       int32   // =>out
         ...
@@ -56,8 +60,9 @@ using Newtonsoft.Json;
     }
 
     out{
-        strLen      int32
         status      byte
+        strLen      int32
+        strMaxLen   int32
         nextPart    Int64
         context     char[]
     }
@@ -116,7 +121,7 @@ namespace ToyGE
         }
 
         //convert jsonback to byte[] in memory
-        public static void InsertJsonBack(JSONBack jsonBack, ref IntPtr memAddr, ref IntPtr preAddr)
+        public static void InsertJsonBack(JSONBack jsonBack, ref IntPtr memAddr, ref IntPtr preAddr, Int16 gap)
         {
             //update nextNode and preNode
             if (preAddr.ToInt64() != 0)
@@ -139,16 +144,16 @@ namespace ToyGE
             MemHelper.InsertInt64(ref memAddr, jsonBack.CellID);
 
             //insert hash(X)
-            MemHelper.InsertString(ref memAddr, jsonBack.hash, ref nextPartAddr);
+            MemHelper.InsertEntireString(ref memAddr, jsonBack.hash, ref nextPartAddr, gap);
 
             //insert time
             MemHelper.InsertInt64(ref memAddr, jsonBack.time);
 
             //insert ins(X)
-            MemHelper.InsertList<Input>(ref memAddr, jsonBack.ins, ref nextPartAddr, InsertIn);
+            MemHelper.InsertEntireList<Input>(ref memAddr, jsonBack.ins, ref nextPartAddr, sizeof(Int32), 4, null, InsertIn);
 
             //insert outs(X)
-            MemHelper.InsertList(ref memAddr, jsonBack.outs, ref nextPartAddr, MemHelper.InsertString);
+            MemHelper.InsertEntireList(ref memAddr, jsonBack.outs, ref nextPartAddr, sizeof(Int32), gap, null, MemHelper.InsertEntireString);
 
             //insert amount
             MemHelper.InsertInt64(ref memAddr, jsonBack.amount);
@@ -157,7 +162,7 @@ namespace ToyGE
         }
 
         //insert In struct
-        static void InsertIn(ref IntPtr memAddr, Input input, ref IntPtr nextPartAddr)
+        static void InsertIn(ref IntPtr memAddr, Input input, ref IntPtr nextPartAddr, Int16 gap)
         {
             //insert pointer
             MemHelper.InsertInt32(ref memAddr, (Int32)(nextPartAddr.ToInt64() - memAddr.ToInt64()));
@@ -169,7 +174,7 @@ namespace ToyGE
             MemHelper.InsertByte(ref nextPartAddr, (byte)0);
 
             //insert in_addr
-            MemHelper.InsertString(ref nextPartAddr, input.addr, ref nextNextPartAddr);
+            MemHelper.InsertEntireString(ref nextPartAddr, input.addr, ref nextNextPartAddr, gap);
 
             //insert tx_index
             MemHelper.InsertInt64(ref nextPartAddr, input.tx_index);
@@ -177,12 +182,40 @@ namespace ToyGE
             nextPartAddr = nextNextPartAddr;
         }
 
+        //delete noed
+        public static unsafe void DeleteNode(IntPtr memAddr)
+        {
+            //update status
+            byte* status = (byte*)(memAddr.ToPointer());
+            byte mask = 0x80;
+            *status = (byte)(*status | mask);
+
+            //update cell link list
+            IntPtr nextAddr = new IntPtr(memAddr.ToInt64() + *(Int32*)(memAddr + 1));
+            IntPtr preAddr = new IntPtr(memAddr.ToInt64() - *(Int32*)(memAddr + 5));
+            MemHelper.UpdateNextNode(nextAddr, preAddr);
+            MemHelper.UpdatePreNode(nextAddr, preAddr);
+
+            //delete sub parts
+
+        }
+
+        //update hash
+        public static unsafe void UpdateHash(IntPtr memAddr, string newHash, ref IntPtr nextPartAddr, Int16 gap, IntPtr[] freeAdds)
+        {
+            //pointer for hash
+            memAddr += 17;
+
+            MemHelper.UpdateString(memAddr, newHash, ref nextPartAddr, gap, freeAdds);
+        }
+
         //update amount
         public static unsafe void UpdateAmount(IntPtr memAddr, Int64 newAmount)
         {
             //pointer for amount
-            Int64* amount = (Int64*)((memAddr + 37).ToPointer());
-            *amount = newAmount;
+            memAddr += 37;
+
+            MemHelper.InsertInt64(ref memAddr, newAmount);
         }
 
         public static unsafe void InsertOut(IntPtr memAddr, string _out, ref IntPtr nextPartAddr)

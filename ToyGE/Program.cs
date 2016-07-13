@@ -14,12 +14,23 @@ namespace ToyGE
         //hash index b-tree, contains cellID and logistic address
         static BTreeNode hashTree = Index.BTCreate();
 
-        //memory parts begin address and node count
+        //memory parts begin address
         static List<IntPtr> memAddrs = new List<IntPtr>();
+
+        //memory parts node count
         static List<int> memCounts = new List<int>();
 
-        //current frontest addr
-        static IntPtr frontAddr = new IntPtr(0);
+        //free memory
+        static List<IntPtr[]> freeAdds = new List<IntPtr[]>();
+
+        //current last tail addr
+        static IntPtr tailAddr = new IntPtr(0);
+
+        //1GB per memory block size
+        static Int32 perBlockSize = 1 << 30;
+
+        //gap for every string or list
+        static Int16 gap = 4;
 
         static void Main(string[] args)
         {
@@ -51,7 +62,8 @@ namespace ToyGE
                     }
                     if (inputs[1] == "amount")
                     {
-                        int count = Foreach(Statistic.Amount_Statistic, 5000000000, 0);
+                        Int64 amount = Int64.Parse(inputs[2]);
+                        int count = Foreach(Statistic.Amount_Statistic, amount, 0);
                         Console.WriteLine("Amount_Statistic:" + count);
                     }
                 }
@@ -63,6 +75,12 @@ namespace ToyGE
                         Int64 newAmount = Int64.Parse(inputs[3]);
                         UpdateAmount(key, newAmount);
                     }
+                    else if (inputs[2] == "hash")
+                    {
+                        Int64 key = Int64.Parse(inputs[1]);
+                        string newHash = inputs[3];
+                        UpdateHash(key, newHash);
+                    }
                 }
                 Console.WriteLine();
             }
@@ -72,11 +90,10 @@ namespace ToyGE
         {
             Console.WriteLine("LoadTxs begin..." + DateTime.Now);
 
-            // #define max line (1 << 20)
-            IntPtr memAddr = Marshal.AllocHGlobal(1 << 30); //512MB per memory part
+            IntPtr memAddr = Marshal.AllocHGlobal(perBlockSize);
             memAddrs.Add(memAddr);
             IntPtr curAddr = memAddr;
-            int count = 0;  //tx count
+            int cellCcount = 0;  //cell count
 
             //load staitc floder
             //test: D:\\Bit\\TSLBit\\Generator\\bin\\x64\\Debug\\test
@@ -93,29 +110,30 @@ namespace ToyGE
                     while (null != (line = reader.ReadLine()))
                     {
                         //insert one node into memory
-                        InsertNode(line, ref curAddr, ref preAddr, ref count);
+                        InsertNode(line, ref curAddr, ref preAddr, ref cellCcount, gap);
                         //if mem parts is full, create new memory
                         if (curAddr.ToInt64() - memAddr.ToInt64() > ((1 << 30) - (1 << 20)))
                         {
                             preAddr = new IntPtr();
-                            memCounts.Add(count);
-                            memAddr = Marshal.AllocHGlobal(1 << 30);    //next memory part
+                            memCounts.Add(cellCcount);
+                            memAddr = Marshal.AllocHGlobal(perBlockSize);
                             memAddrs.Add(memAddr);
                             curAddr = memAddr;
-                            count = 0;
+                            cellCcount = 0;
                         }
                     }
                 }
             }
-            memCounts.Add(count);
+            memCounts.Add(cellCcount);
 
-            frontAddr = memAddr;
+            //update tailAddr
+            tailAddr = memAddr;
 
             Console.WriteLine("LoadTxs end..." + DateTime.Now);
         }
 
         //insert one node into memory and b-tree
-        static void InsertNode(string readLine, ref IntPtr curAddr, ref IntPtr preAddr, ref int count)
+        static void InsertNode(string readLine, ref IntPtr curAddr, ref IntPtr preAddr, ref int count, Int16 gap)
         {
             //string to object
             JSONBack jsonBack = JSONBack.ConvertStringToJSONBack(readLine);
@@ -125,11 +143,8 @@ namespace ToyGE
             Index.BTInsert(ref hashTree, cellID, curAddr);
 
             //insert node
-            if (jsonBack.amount > 0)
-            {
-                TxHelper.InsertJsonBack(jsonBack, ref curAddr, ref preAddr);
-                count++;
-            }
+            TxHelper.InsertJsonBack(jsonBack, ref curAddr, ref preAddr, gap);
+            count++;
         }
 
         //search node by key
@@ -186,7 +201,7 @@ namespace ToyGE
             IntPtr nodeAddr = new IntPtr();
             if (Index.BTSearch(hashTree, key, ref nodeAddr))
             {
-                MemHelper.DeleteNode(nodeAddr);
+                TxHelper.DeleteNode(nodeAddr);
                 Console.WriteLine("DeleteNode end..." + DateTime.Now);
             }
         }
@@ -201,6 +216,18 @@ namespace ToyGE
             {
                 TxHelper.UpdateAmount(nodeAddr, newAmount);
                 Console.WriteLine("UpdateAmount end..." + DateTime.Now);
+            }
+        }
+
+        static void UpdateHash(Int64 key, string newHash, Int16 gap, IntPtr[] freeAddrs)
+        {
+            Console.WriteLine("UpdateHash begin..." + DateTime.Now);
+
+            IntPtr nodeAddr = new IntPtr();
+            if (Index.BTSearch(hashTree, key, ref nodeAddr))
+            {
+                TxHelper.UpdateHash(nodeAddr, newHash, ref tailAddr, gap, freeAddrs);
+                Console.WriteLine("UpdateHash end..." + DateTime.Now);
             }
         }
     }
