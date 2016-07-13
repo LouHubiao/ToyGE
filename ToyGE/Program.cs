@@ -230,5 +230,17 @@ namespace ToyGE
                 Console.WriteLine("UpdateHash end..." + DateTime.Now);
             }
         }
+
+        static int GetBlockHasAddr(IntPtr cellAddr)
+        {
+            for(int i = 0; i < memAddrs.Count; i++)
+            {
+                if (cellAddr.ToInt64() > memAddrs[i].ToInt64())
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
     }
 }

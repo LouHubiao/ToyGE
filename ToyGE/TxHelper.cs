@@ -183,7 +183,7 @@ namespace ToyGE
         }
 
         //delete noed
-        public static unsafe void DeleteNode(IntPtr memAddr)
+        public static unsafe void DeleteNode(IntPtr memAddr, IntPtr[] freeAddrs)
         {
             //update status
             byte* status = (byte*)(memAddr.ToPointer());
@@ -196,7 +196,12 @@ namespace ToyGE
             MemHelper.UpdateNextNode(nextAddr, preAddr);
             MemHelper.UpdatePreNode(nextAddr, preAddr);
 
-            //delete sub parts
+            //delete hash
+            IntPtr hashAddr = memAddr + 17;
+            MemHelper.DeleteString(hashAddr, freeAddrs);
+
+            //delete ins
+
 
         }
 

@@ -487,6 +487,8 @@ namespace ToyGE
         #endregion UPDATE info
 
         #region DELETE info
+
+        //delete string
         public static unsafe void DeleteString(IntPtr memAddr, IntPtr[] freeAdds)
         {
             Int32* memAddrContext = (Int32*)memAddr.ToPointer();
@@ -526,37 +528,46 @@ namespace ToyGE
             MergeWithNext(deleteAddr, nextAddr, freeAdds);
         }
 
-        //merge with next free part
-        static unsafe void MergeWithNext(IntPtr curAddr, IntPtr nextAddr, IntPtr[] freeAdds)
+        //delete list
+        public static unsafe void DeleteList<T>(IntPtr memAddr, IntPtr[] freeAdds, Int16 tLength)
         {
-            if (IsDeleted(nextAddr))
+            Int32* memAddrContext = (Int32*)memAddr.ToPointer();
+            IntPtr offsetMemAddr = GetOffsetAddr(ref memAddr);
+            *memAddrContext = 0;    //no use
+            IntPtr deleteAddr = offsetMemAddr;
+
+            byte* status = (byte*)(offsetMemAddr.ToPointer());
+            offsetMemAddr += 1;
+
+            Int16 length = GetInt16(ref offsetMemAddr);
+
+            byte hasNextMask = 0x40;
+            byte hasNext = (byte)(*status & hasNextMask);
+            if (hasNext > 0)
             {
-                //delete cur free
-                DeleteFree(curAddr);
+                //add here
 
-                //delete next free
-                DeleteFree(nextAddr);
-
-                //merge
-                Int64 nextNext = GetFreeNext(nextAddr);
-                Int64 nextPre = GetFreePre(nextAddr);
-                UpdateFreeNext(curAddr, nextNext);
-                UpdateFreePre(curAddr, nextPre);
-
-                //get new length
-                Int16 curLen = GetLength(curAddr);
-                Int16 nextLen = GetLength(nextAddr);
-                Int16 fullLength = (Int16)(curLen + nextLen);
-
-                //update length
-                InsertFreeLength(curAddr, fullLength);
-
-                //insert new one
-                InsertFree(curAddr, freeAdds, fullLength);
-
-                //use next
-                MergeWithNext(curAddr, curAddr + fullLength, freeAdds);
+                //delete next part
+                IntPtr nextPartOffset = offsetMemAddr + length - sizeof(Int16);
+                DeleteList<T>(nextPartOffset, freeAdds, tLength);
             }
+
+            //change isDelete
+            byte mask = 0x80;
+            *status = (byte)(*status | mask);
+
+            //get full length
+            Int16 fullLength = (Int16)(length + sizeof(byte) + sizeof(Int32));
+
+            //update length=fullLength
+            InsertFreeLength(deleteAddr, fullLength);
+
+            //add to freeAdds
+            InsertFree(deleteAddr, freeAdds, fullLength);
+
+            //merge with after
+            IntPtr nextAddr = offsetMemAddr + length;
+            MergeWithNext(deleteAddr, nextAddr, freeAdds);
         }
 
         #endregion DELETE info
@@ -635,6 +646,39 @@ namespace ToyGE
         {
             Int16* freeLenAddr = (Int16*)(freeAddr + sizeof(byte));
             *freeLenAddr = newLength;
+        }
+
+        //merge with next free part
+        static unsafe void MergeWithNext(IntPtr curAddr, IntPtr nextAddr, IntPtr[] freeAdds)
+        {
+            if (IsDeleted(nextAddr))
+            {
+                //delete cur free
+                DeleteFree(curAddr);
+
+                //delete next free
+                DeleteFree(nextAddr);
+
+                //merge
+                Int64 nextNext = GetFreeNext(nextAddr);
+                Int64 nextPre = GetFreePre(nextAddr);
+                UpdateFreeNext(curAddr, nextNext);
+                UpdateFreePre(curAddr, nextPre);
+
+                //get new length
+                Int16 curLen = GetLength(curAddr);
+                Int16 nextLen = GetLength(nextAddr);
+                Int16 fullLength = (Int16)(curLen + nextLen);
+
+                //update length
+                InsertFreeLength(curAddr, fullLength);
+
+                //insert new one
+                InsertFree(curAddr, freeAdds, fullLength);
+
+                //use next
+                MergeWithNext(curAddr, curAddr + fullLength, freeAdds);
+            }
         }
 
         #endregion freeAddr operation
