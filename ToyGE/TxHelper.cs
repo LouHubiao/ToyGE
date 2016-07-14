@@ -182,6 +182,12 @@ namespace ToyGE
             nextPartAddr = nextNextPartAddr;
         }
 
+        //insert out string
+        public static unsafe void InsertOut(IntPtr memAddr, string _out, ref IntPtr nextPartAddr, Int16 gap)
+        {
+            MemHelper.InsertEntireString(ref memAddr, _out, ref nextPartAddr, gap);
+        }
+
         //delete noed
         public static unsafe void DeleteNode(IntPtr memAddr, IntPtr[] freeAddrs)
         {
@@ -198,11 +204,22 @@ namespace ToyGE
 
             //delete hash
             IntPtr hashAddr = memAddr + 17;
-            MemHelper.DeleteString(hashAddr, freeAddrs);
+            MemHelper.DeleteString(ref hashAddr, freeAddrs);
 
             //delete ins
+            IntPtr insAddr = memAddr + 21;
+            MemHelper.DeleteList<Input>(ref insAddr, freeAddrs, DeleteIn);
 
+            //delete outs
+            IntPtr outsAddr = memAddr + 25;
+            MemHelper.DeleteList<Input>(ref outsAddr, freeAddrs, MemHelper.DeleteString);
+        }
 
+        public static void DeleteIn(ref IntPtr memAddr, IntPtr[] freeAddrs)
+        {
+            //delete in_addr
+            IntPtr in_addr = memAddr + 1;
+            MemHelper.DeleteString(ref in_addr, freeAddrs);
         }
 
         //update hash
@@ -210,7 +227,6 @@ namespace ToyGE
         {
             //pointer for hash
             memAddr += 17;
-
             MemHelper.UpdateString(memAddr, newHash, ref nextPartAddr, gap, freeAdds);
         }
 
@@ -219,13 +235,7 @@ namespace ToyGE
         {
             //pointer for amount
             memAddr += 37;
-
             MemHelper.InsertInt64(ref memAddr, newAmount);
-        }
-
-        public static unsafe void InsertOut(IntPtr memAddr, string _out, ref IntPtr nextPartAddr)
-        {
-
         }
     }
 }

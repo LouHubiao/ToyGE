@@ -403,7 +403,7 @@ namespace ToyGE
                 {
                     //delete nextPart
                     IntPtr nextPartAddr = offsetMemAddr + length - sizeof(Int32);
-                    DeleteString(nextPartAddr, freeAdds);
+                    DeleteString(ref nextPartAddr, freeAdds);
 
                     //insert status, hasNext=0
                     *status = (byte)0x00;
@@ -419,7 +419,7 @@ namespace ToyGE
                 {
                     //delete nextPart
                     IntPtr nextPartAddr = offsetMemAddr + length - sizeof(Int32);
-                    DeleteString(nextPartAddr, freeAdds);
+                    DeleteString(ref nextPartAddr, freeAdds);
 
                     //insert status, hasNext=0, isFull=1
                     *status = (byte)0x20;
@@ -489,7 +489,7 @@ namespace ToyGE
         #region DELETE info
 
         //delete string
-        public static unsafe void DeleteString(IntPtr memAddr, IntPtr[] freeAdds)
+        public static unsafe void DeleteString(ref IntPtr memAddr, IntPtr[] freeAdds)
         {
             Int32* memAddrContext = (Int32*)memAddr.ToPointer();
             IntPtr offsetMemAddr = GetOffsetAddr(ref memAddr);
@@ -507,7 +507,7 @@ namespace ToyGE
             {
                 //delete next part
                 IntPtr nextPartOffset = offsetMemAddr + length - sizeof(Int16);
-                DeleteString(nextPartOffset, freeAdds);
+                DeleteString(ref nextPartOffset, freeAdds);
             }
 
             //change isDelete
@@ -529,7 +529,8 @@ namespace ToyGE
         }
 
         //delete list
-        public static unsafe void DeleteList<T>(IntPtr memAddr, IntPtr[] freeAdds, Int16 tLength)
+        public delegate void DeleteListPart<T>(ref IntPtr memAddr, IntPtr[] freeAdds);
+        public static unsafe void DeleteList<T>(ref IntPtr memAddr, IntPtr[] freeAdds, DeleteListPart<T> deleteListPart)
         {
             Int32* memAddrContext = (Int32*)memAddr.ToPointer();
             IntPtr offsetMemAddr = GetOffsetAddr(ref memAddr);
@@ -541,15 +542,46 @@ namespace ToyGE
 
             Int16 length = GetInt16(ref offsetMemAddr);
 
-            byte hasNextMask = 0x40;
-            byte hasNext = (byte)(*status & hasNextMask);
-            if (hasNext > 0)
+            byte isFullMask = 0x20;
+            byte isFull = (byte)(*status & isFullMask);
+            if (typeof(T) != typeof(Int32) && typeof(T) != typeof(Int64))
             {
-                //add here
+                if (isFull > 0)
+                {
+                    IntPtr lastAddr = offsetMemAddr + length;
+                    while (offsetMemAddr.ToInt64() < lastAddr.ToInt64())
+                    {
+                        deleteListPart(ref offsetMemAddr, freeAdds);
+                    }
+                }
+                else
+                {
+                    byte hasNextMask = 0x40;
+                    byte hasNext = (byte)(*status & hasNextMask);
+                    if (hasNext > 0)
+                    {
+                        IntPtr lastAddr = offsetMemAddr + length - sizeof(Int32);
+                        while (offsetMemAddr.ToInt64() < lastAddr.ToInt64())
+                        {
+                            deleteListPart(ref offsetMemAddr, freeAdds);
+                        }
 
-                //delete next part
-                IntPtr nextPartOffset = offsetMemAddr + length - sizeof(Int16);
-                DeleteList<T>(nextPartOffset, freeAdds, tLength);
+                        //delete next part
+                        IntPtr nextPartOffset = lastAddr - sizeof(Int16);
+                        DeleteList<T>(ref nextPartOffset, freeAdds, deleteListPart);
+                    }
+                    else
+                    {
+                        IntPtr curLengthAddr = offsetMemAddr + length - sizeof(Int16);
+                        Int16 curLength = GetInt16(ref curLengthAddr);
+
+                        IntPtr lastAddr = offsetMemAddr + curLength;
+                        while (offsetMemAddr.ToInt64() < lastAddr.ToInt64())
+                        {
+                            deleteListPart(ref offsetMemAddr, freeAdds);
+                        }
+                    }
+                }
             }
 
             //change isDelete

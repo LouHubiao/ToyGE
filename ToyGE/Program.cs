@@ -15,16 +15,16 @@ namespace ToyGE
         static BTreeNode hashTree = Index.BTCreate();
 
         //memory parts begin address
-        static List<IntPtr> memAddrs = new List<IntPtr>();
+        static List<IntPtr> blockAddrs = new List<IntPtr>();
 
         //memory parts node count
-        static List<int> memCounts = new List<int>();
+        static List<int> blockCounts = new List<int>();
 
-        //free memory
+        //free memory list for every block
         static List<IntPtr[]> freeAdds = new List<IntPtr[]>();
 
-        //current last tail addr
-        static IntPtr tailAddr = new IntPtr(0);
+        //current last tail addr for every block
+        static List<IntPtr> tailAddrs = new List<IntPtr>();
 
         //1GB per memory block size
         static Int32 perBlockSize = 1 << 30;
