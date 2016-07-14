@@ -94,132 +94,79 @@ List&lt;IntPtr[]&gt; freeAdds用于存储空闲内存链表；
 
 GE结构：
 
-struct In
-
-{
-
-        CellId tx\_index;        //发起方比特币来源
-
-        string addr;                //发起方地址
-
-}
-
-cellstruct Tx
-
-{
-
-        long time;                //支付发生的时间
-
-        string hash;                //支付的64位hash值
-
-        List&lt;In&gt; ins;                //支付发起方信息
-
-        List&lt;string&gt; outs;        //支付接收方地址列表
-
-        long amount;                //支付金额
-
-}
+    struct In
+    {
+            CellId tx\_index;        //发起方比特币来源
+            string addr;                //发起方地址
+    }
+    cellstruct Tx
+    {
+            long time;                //支付发生的时间
+            string hash;                //支付的64位hash值
+            List&lt;In&gt; ins;                //支付发起方信息
+            List&lt;string&gt; outs;        //支付接收方地址列表
+            long amount;                //支付金额
+    }
 
 ToyGE结构：
 
     Tx {
-
-        status      char
-
+        status      byte
         nextNode    int32   // next node
-
         preNode     int32   // pre node
-
-        CellID           Int64
-
-        hash        int32   // =&gt;hash
-
-        time           Int64
-
-        ins                   int32   // =&gt;ins
-
-        outs           int32   // =&gt;outs
-
-        amount           Int64
-
+        CellID      Int64
+        hash        int32   // =>hash
+        time        Int64
+        ins         int32   // =>ins
+        outs        int32   // =>outs
+        amount      Int64
     }
 
     hash{
-
-        strLen      int32
-
-        status      char
-
-        nextPart    int32
-
-        context     char[]
-
+        status      byte
+        length      int32
+        context     byte[]
+        [curLnegth] int32
+        [nextPart]  int32
     }
 
     ins{
-
-        listLen     int32
-
-        status      char
-
-        nextPart    int32
-
-        in\_1        int32   // =&gt;in
-
-        ...
-
-        in\_N        int32   // =&gt;in
-
+        status      byte
+        length      int32
+        context     int32[] //=>in
+        [curLnegth] int32
+        [nextPart]  int32
     }
 
     in{
-
-        status      char
-
-        addr        int32   // =&gt;in\_addr
-
-        tx\_index    Int64
-
+        status      byte
+        addr        int32   // =>in_addr
+        tx_index    Int64
     }
 
-    in\_addr{
-
-        strLen      int32
-
-        status      char
-
-        nextPart    int32
-
-        context     char[]
-
+    in_addr{
+        status      byte
+        length      int32
+        context     byte[]
+        [curLnegth] int32
+        [nextPart]  int32
     }
 
     outs{
-
-        listLen     int32
-
-        status      char
-
-        nextPart    int32
-
-        out\_1       int32   // =&gt;out\_addr
-
-        ...
-
-        out\_N       int32   // =&gt;out\_addr
+        status      byte
+        length      int32
+        context     int32[] //=>out
+        [curLnegth] int32
+        [nextPart]  int32
 
     }
 
     out{
-
-        strLen      int32
-
-        status      char
-
-        nextPart    int32
-
-        context     char[]
-
+        status      byte
+        length      int32
+        context     byte[]
+        [curLnegth] int32
+        [nextPart]  int32
     }
 
 插入数据：
@@ -231,3 +178,5 @@ ToyGE结构：
 1.为了尽可能提高内存利用率，对于可变长类型，使用了三种状态：notFull，isFull，hasnext。其中isFull内存利用率最高，也是最可能出现的情况（申请多少用多少）。其他两种在数据的最后有4个字节的冗余。
 
 2.删除数据后需要对空闲数据尽可能merge，但是必须在O(1)时间内完成，所以使用了向后merge的策略，也防止merge过度导致小块内存缺失。
+
+3.如果没有多余的空闲内存，则将整个cell移动到memory blocks的末尾，并更新索引树。（未实现）

@@ -68,6 +68,25 @@ namespace ToyGE
             return JSONBack;
         }
 
+        public int GetLength()
+        {
+            int result = 0;
+            result += 45;
+            result += 3 + this.hash.Length;
+            foreach(Input _in in this.ins)
+            {
+                result += _in.addr.Length;
+                result += 8;
+            }
+            foreach(string _out in this.outs)
+            {
+                result += _out.Length;
+            }
+            result += 8;
+
+            return result;
+        }
+
         public override string ToString()
         {
             StringBuilder strBuilder = new StringBuilder();

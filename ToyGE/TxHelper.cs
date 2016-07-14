@@ -73,7 +73,7 @@ namespace ToyGE
     public class TxHelper
     {
         //convert memory Tx to jsonback object for random access
-        public static JSONBack GetJsonBack(IntPtr jsonBackAddr)
+        public static JSONBack GetCell(IntPtr jsonBackAddr)
         {
             JSONBack jsonBack = new JSONBack();
             try
@@ -189,7 +189,7 @@ namespace ToyGE
         }
 
         //delete noed
-        public static unsafe void DeleteNode(IntPtr memAddr, IntPtr[] freeAddrs)
+        public static unsafe void DeleteCell(IntPtr memAddr, IntPtr[] freeAddrs)
         {
             //update status
             byte* status = (byte*)(memAddr.ToPointer());
@@ -223,11 +223,11 @@ namespace ToyGE
         }
 
         //update hash
-        public static unsafe void UpdateHash(IntPtr memAddr, string newHash, ref IntPtr nextPartAddr, Int16 gap, IntPtr[] freeAdds)
+        public static unsafe void UpdateHash(IntPtr memAddr, string newHash, IntPtr[] freeAdds)
         {
             //pointer for hash
             memAddr += 17;
-            MemHelper.UpdateString(memAddr, newHash, ref nextPartAddr, gap, freeAdds);
+            MemHelper.UpdateString(memAddr, newHash, freeAdds);
         }
 
         //update amount

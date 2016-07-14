@@ -21,16 +21,16 @@ namespace ToyGE
         static List<int> blockCounts = new List<int>();
 
         //free memory list for every block
-        static List<IntPtr[]> freeAdds = new List<IntPtr[]>();
+        unsafe static List<IntPtr[]> freeAdds = new List<IntPtr[]>();
 
-        //current last tail addr for every block
-        static List<IntPtr> tailAddrs = new List<IntPtr>();
+        ////current last tail addr for every block
+        //static List<IntPtr> tailAddrs = new List<IntPtr>();
 
         //1GB per memory block size
         static Int32 perBlockSize = 1 << 30;
 
         //gap for every string or list
-        static Int16 gap = 4;
+        static Int16 gap = 0;
 
         static void Main(string[] args)
         {
@@ -91,16 +91,17 @@ namespace ToyGE
             Console.WriteLine("LoadTxs begin..." + DateTime.Now);
 
             IntPtr memAddr = Marshal.AllocHGlobal(perBlockSize);
-            memAddrs.Add(memAddr);
+            blockAddrs.Add(memAddr);
+            int cellCount = 0;  //cell count
+            freeAdds.Add(new IntPtr[1 << 16]);
             IntPtr curAddr = memAddr;
-            int cellCcount = 0;  //cell count
 
             //load staitc floder
             //test: D:\\Bit\\TSLBit\\Generator\\bin\\x64\\Debug\\test
             //full: D:\\Bit\\TSLBit\\Generator\\bin\x64\\Debug\\fullBlocks
             //remote: D:\\v-hulou\\fullBlocks
-            DirectoryInfo dirInfo = new DirectoryInfo(@"D:\\Bit\\TSLBit\\Generator\\bin\x64\\Debug\\fullBlocks");
-            foreach (FileInfo file in dirInfo.GetFiles("block1.txt"))
+            DirectoryInfo dirInfo = new DirectoryInfo(@"D:\\Bit\\TSLBit\\Generator\\bin\\x64\\Debug\\test");
+            foreach (FileInfo file in dirInfo.GetFiles("block90000.txt"))
             {
                 //read json line by line
                 using (StreamReader reader = new StreamReader(file.FullName))
@@ -109,35 +110,34 @@ namespace ToyGE
                     IntPtr preAddr = new IntPtr();
                     while (null != (line = reader.ReadLine()))
                     {
-                        //insert one node into memory
-                        InsertNode(line, ref curAddr, ref preAddr, ref cellCcount, gap);
+                        //string to object
+                        JSONBack jsonBack = JSONBack.ConvertStringToJSONBack(line);
+
                         //if mem parts is full, create new memory
-                        if (curAddr.ToInt64() - memAddr.ToInt64() > ((1 << 30) - (1 << 20)))
+                        if (curAddr.ToInt64() - memAddr.ToInt64() > (perBlockSize - jsonBack.GetLength()))
                         {
                             preAddr = new IntPtr();
-                            memCounts.Add(cellCcount);
+                            blockCounts.Add(cellCount);
                             memAddr = Marshal.AllocHGlobal(perBlockSize);
-                            memAddrs.Add(memAddr);
+                            blockAddrs.Add(memAddr);
                             curAddr = memAddr;
-                            cellCcount = 0;
+                            cellCount = 0;
+                            freeAdds.Add(new IntPtr[1 << 16]);
                         }
+
+                        //insert one node into memory
+                        InsertNode(jsonBack, ref curAddr, ref preAddr, ref cellCount, gap);
                     }
                 }
             }
-            memCounts.Add(cellCcount);
-
-            //update tailAddr
-            tailAddr = memAddr;
+            blockCounts.Add(cellCount);
 
             Console.WriteLine("LoadTxs end..." + DateTime.Now);
         }
 
         //insert one node into memory and b-tree
-        static void InsertNode(string readLine, ref IntPtr curAddr, ref IntPtr preAddr, ref int count, Int16 gap)
+        static void InsertNode(JSONBack jsonBack, ref IntPtr curAddr, ref IntPtr preAddr, ref int count, Int16 gap)
         {
-            //string to object
-            JSONBack jsonBack = JSONBack.ConvertStringToJSONBack(readLine);
-
             //isnert cellID in b-tree
             Int64 cellID = jsonBack.CellID;
             Index.BTInsert(ref hashTree, cellID, curAddr);
@@ -157,7 +157,7 @@ namespace ToyGE
             {
                 if (!MemHelper.IsDeleted(node))
                 {
-                    JSONBack result = TxHelper.GetJsonBack(node);
+                    JSONBack result = TxHelper.GetCell(node);
                     Console.WriteLine("SearchNode end..." + DateTime.Now);
                     return result;
                 }
@@ -172,10 +172,10 @@ namespace ToyGE
             Console.WriteLine("Foreach begin..." + DateTime.Now);
 
             int result = 0;
-            for (int i = 0; i < memAddrs.Count; i++)
+            for (int i = 0; i < blockAddrs.Count; i++)
             {
-                IntPtr memAddr = memAddrs[i];
-                for (int j = 0; j < memCounts[i]; j++)
+                IntPtr memAddr = blockAddrs[i];
+                for (int j = 0; j < blockCounts[i]; j++)
                 {
                     Int32* nextOffset = (Int32*)(memAddr + 1);
                     if (fun(memAddr, amount, other))
@@ -201,7 +201,9 @@ namespace ToyGE
             IntPtr nodeAddr = new IntPtr();
             if (Index.BTSearch(hashTree, key, ref nodeAddr))
             {
-                TxHelper.DeleteNode(nodeAddr);
+                int blockIndex = GetBlockIndex(nodeAddr);
+                blockCounts[blockIndex] -= 1;
+                TxHelper.DeleteCell(nodeAddr, freeAdds[blockIndex]);
                 Console.WriteLine("DeleteNode end..." + DateTime.Now);
             }
         }
@@ -219,28 +221,47 @@ namespace ToyGE
             }
         }
 
-        static void UpdateHash(Int64 key, string newHash, Int16 gap, IntPtr[] freeAddrs)
+        static void UpdateHash(Int64 key, string newHash)
         {
             Console.WriteLine("UpdateHash begin..." + DateTime.Now);
 
             IntPtr nodeAddr = new IntPtr();
+            //search index
             if (Index.BTSearch(hashTree, key, ref nodeAddr))
             {
-                TxHelper.UpdateHash(nodeAddr, newHash, ref tailAddr, gap, freeAddrs);
+                int blockIndex = GetBlockIndex(nodeAddr);
+                IntPtr[] freeAddrs = freeAdds[blockIndex];
+                TxHelper.UpdateHash(nodeAddr, newHash, freeAddrs);
                 Console.WriteLine("UpdateHash end..." + DateTime.Now);
             }
         }
 
-        static int GetBlockHasAddr(IntPtr cellAddr)
+        //get the block index of cellAddr
+        static int GetBlockIndex(IntPtr cellAddr)
         {
-            for(int i = 0; i < memAddrs.Count; i++)
+            for (int i = 0; i < blockAddrs.Count; i++)
             {
-                if (cellAddr.ToInt64() > memAddrs[i].ToInt64())
+                if (cellAddr.ToInt64() > blockAddrs[i].ToInt64())
                 {
                     return i;
                 }
             }
             return -1;
+        }
+
+        //get suit free space
+        static IntPtr GetFreeSpace(int blockIndex, int size)
+        {
+            for(int i = size; i < (1 << 16); i++)
+            {
+                if(freeAdds[blockIndex][i].ToInt64() != 0)
+                {
+                    IntPtr result = freeAdds[blockIndex][i];
+                    MemHelper.DeleteFree(result, freeAdds[blockIndex]);
+                    return result;
+                }
+            }
+            return new IntPtr(0);
         }
     }
 }

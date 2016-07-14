@@ -144,8 +144,7 @@ namespace ToyGE
                     IntPtr curLengthAddr = offsetMemAddr + length - sizeof(Int16);
                     Int16 curLength = GetInt16(ref curLengthAddr);
 
-                    IntPtr lastAddr = offsetMemAddr + curLength;
-                    while (offsetMemAddr.ToInt64() < lastAddr.ToInt64())
+                    for (int i = 0; i < curLength; i++)
                     {
                         result.Add(getListPart(ref offsetMemAddr));
                     }
@@ -242,15 +241,17 @@ namespace ToyGE
                 InsertByte(ref nextPartAddr, (byte)0);
 
                 //insert length
-                InsertInt16(ref nextPartAddr, (Int16)(input.Length + gap));
-                IntPtr lastAddr = nextPartAddr + (Int16)(input.Length + gap);
+                InsertInt16(ref nextPartAddr, (Int16)(input.Length + sizeof(Int16) + gap));
+                IntPtr lastAddr = nextPartAddr + (Int16)(input.Length + sizeof(Int16) + gap);
 
                 //insert curLength
-                nextPartAddr = lastAddr - sizeof(Int16);
-                InsertInt16(ref nextPartAddr, (Int16)input.Length);
+                IntPtr curLengthAddr = lastAddr - sizeof(Int16);
+                InsertInt16(ref curLengthAddr, (Int16)input.Length);
 
                 //inser content
                 InsertChars(ref nextPartAddr, input);
+
+                nextPartAddr = lastAddr;
             }
             else
             {
@@ -281,12 +282,12 @@ namespace ToyGE
                 MemHelper.InsertByte(ref nextPartAddr, (byte)0);
 
                 //insert length
-                MemHelper.InsertInt32(ref nextPartAddr, (Int16)((inputs.Count + gap) * tLength));
-                lastAddr = nextPartAddr + (Int16)((inputs.Count + gap) * tLength);
+                MemHelper.InsertInt16(ref nextPartAddr, (Int16)(inputs.Count * tLength + gap + sizeof(Int16)));
+                lastAddr = nextPartAddr + (Int16)(inputs.Count * tLength + gap + sizeof(Int16));
 
                 //insert curLength
-                nextPartAddr = lastAddr - sizeof(Int16);
-                InsertInt16(ref nextPartAddr, (Int16)inputs.Count);
+                IntPtr curLengthAddr = lastAddr - sizeof(Int16);
+                InsertInt16(ref curLengthAddr, (Int16)inputs.Count);
 
                 //insert context
                 if (typeof(T) != typeof(Int32) && typeof(T) != typeof(Int64))
@@ -386,7 +387,7 @@ namespace ToyGE
 
         #region UPDATE info
         //update string, have found space
-        public static unsafe void UpdateString(IntPtr memAddr, string newString, ref IntPtr tailAddr, Int16 gap, IntPtr[] freeAdds)
+        public static unsafe void UpdateString(IntPtr memAddr, string newString, IntPtr[] freeAdds)
         {
             IntPtr offsetMemAddr = GetOffsetAddr(ref memAddr);
 
@@ -442,7 +443,7 @@ namespace ToyGE
                     InsertChars(ref offsetMemAddr, leftString);
 
                     string rigthtString = newString.Substring(length - sizeof(Int32), newString.Length - length + sizeof(Int32));
-                    UpdateString(nextPartOffset, rigthtString, ref nextPartAddr, gap, freeAdds);
+                    UpdateString(nextPartOffset, rigthtString, freeAdds);
                 }
             }
             else
@@ -480,7 +481,8 @@ namespace ToyGE
                     InsertChars(ref offsetMemAddr, leftString);
 
                     string rigthtString = newString.Substring(length - sizeof(Int32), newString.Length - length + sizeof(Int32));
-                    InsertEntireString(ref nextPartAddr, rigthtString, ref tailAddr, gap);
+                    IntPtr nextSpace = GetFreeSpace((Int16)(rigthtString.Length + 3), freeAdds);
+                    InsertEntireString(ref nextPartAddr, rigthtString, ref nextSpace, 0);
                 }
             }
         }
@@ -624,18 +626,26 @@ namespace ToyGE
         static unsafe void InsertFree(IntPtr curAddr, IntPtr[] freeAdds, Int16 length)
         {
             UpdateFreeNext(curAddr, freeAdds[length].ToInt64());
+            UpdateFreePre(curAddr, length);
             IntPtr nextFree = freeAdds[length];
             UpdateFreePre(nextFree, curAddr.ToInt64());
             freeAdds[length] = curAddr;
         }
 
-        static unsafe void DeleteFree(IntPtr curAddr)
+        public static unsafe void DeleteFree(IntPtr curAddr, IntPtr[] freeAdds)
         {
             Int64 freeNext = GetFreeNext(curAddr);
             Int64 freePre = GetFreePre(curAddr);
-            UpdateFreeNext(new IntPtr(freePre), freeNext);
-            if (freeNext != 0)
-                UpdateFreePre(new IntPtr(freeNext), freePre);
+            if (freePre < freeAdds.Length)
+            {
+                freeAdds[(Int16)freePre] = new IntPtr(freeNext);
+            }
+            else
+            {
+                UpdateFreeNext(new IntPtr(freePre), freeNext);
+                if (freeNext != 0)
+                    UpdateFreePre(new IntPtr(freeNext), freePre);
+            }
         }
 
         //get next free part
@@ -686,10 +696,10 @@ namespace ToyGE
             if (IsDeleted(nextAddr))
             {
                 //delete cur free
-                DeleteFree(curAddr);
+                DeleteFree(curAddr, freeAdds);
 
                 //delete next free
-                DeleteFree(nextAddr);
+                DeleteFree(nextAddr, freeAdds);
 
                 //merge
                 Int64 nextNext = GetFreeNext(nextAddr);
