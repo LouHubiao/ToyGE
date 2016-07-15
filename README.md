@@ -30,7 +30,7 @@ memory struct:
 
     cell:   status(8)| nextNode(32)| preNode(32)| Body|
 
-    deleted:status(8)| length(16)|
+    deleted:status(8)| freeNext(32)| freePre(32)| Body|
 
 status:
 
@@ -60,7 +60,7 @@ BTreeNode hashTree用于存储索引。
 
  所有定长结构使用原始数据进行存储，增加修改都直接对内存进行修改。所有不定长结构都抽象为一个内存 **偏移地址** ，地址指向具体存储的起始地址。插入不定长结构会存储在目前内存块的最末端。最终形成连续的存储空间（增加cache命中率）。
 
- 全局数据：
+### 全局数据：
 
 List&lt;IntPtr&gt; memAddrs用于存储每一个内存块的起始地址；
 
@@ -68,27 +68,29 @@ List&lt;int&gt; memCounts用于存储每一个内存块的cell数量；
 
 List&lt;IntPtr[]&gt; freeAdds用于存储空闲内存链表；
 
- List&lt;IntPtr&gt; tailAddrs用于存储当前最尾部内存地址（插入新数据的位置）
+List&lt;freeStruct[]&gt; littleFreeAddrs 用于处理小于64Byte的内存碎片
 
- Int16 gap用于可变长度变量的缓冲冗余空间
+List&lt;IntPtr&gt; tailAddrs用于存储当前最尾部内存地址（插入新数据的位置）
 
- Insert：
+Int16 gap用于可变长度变量的缓冲冗余空间
 
- 对于不定长数据的插入。首先确定其长度，然后判断是否存在大小合适的空闲内存，如果不存在，则插入到tailAddr后，如果存在，则从空闲链表中卸下对应内存。
+### Insert：
+
+对于不定长数据的插入。首先确定其长度，然后判断是否存在大小合适的空闲内存，如果不存在，则插入到tailAddr后，如果存在，则从空闲链表中卸下对应内存。
 
 如果插入List或者string或者struct，则同时需要插入指针；如果是cell类型，则需要修改附近cells的nextNode和preNode；如果在插入listPart过程中与后面数据冲突，则修改hasNext并且增加nextPart指针。
 
 对于可变长度类型（string和list），需要用户提前设置相邻两个数据之间的gap，给未来修改数据进行缓冲。同时影响isFull。
 
- Delete：
+### Delete：
 
- 对于list中定长数据的删除，将list最后的数据放置插入到删除数据的位置，修改length大小。
+对于list中定长数据的删除，将list最后的数据放置插入到删除数据的位置，修改length大小。
 
 对于不定长数据的删除。通过标记节点中IsDeleted来进行删除，而不修改索引树的内容，如果是list或者struct或者string类型，则同时需要删除对应的指针；如果是cell类型，则修改preNode-&gt;nextNode=cur-&gt;nextNode。在删除后，将空闲的内存空间挂在freeAdds下。
 
- Update：
+### Update：
 
- 对于不定长数据的Update操作（只有string可以update），如果修改后长度小于之前的长度，可以直接进行修改，反之则转化为先deleted然后再insert。
+对于不定长数据的Update操作（只有string可以update），如果修改后长度小于之前的长度，可以直接进行修改，反之则转化为先deleted然后再insert。
 
 ## 举例：
 
@@ -124,7 +126,7 @@ ToyGE结构：
 
     hash{
         status      byte
-        length      int32
+        length      int16
         context     byte[]
         [curLnegth] int32
         [nextPart]  int32
@@ -132,7 +134,7 @@ ToyGE结构：
 
     ins{
         status      byte
-        length      int32
+        length      int16
         context     int32[] //=>in
         [curLnegth] int32
         [nextPart]  int32
@@ -146,7 +148,7 @@ ToyGE结构：
 
     in_addr{
         status      byte
-        length      int32
+        length      int16
         context     byte[]
         [curLnegth] int32
         [nextPart]  int32
@@ -154,7 +156,7 @@ ToyGE结构：
 
     outs{
         status      byte
-        length      int32
+        length      int16
         context     int32[] //=>out
         [curLnegth] int32
         [nextPart]  int32
@@ -163,7 +165,7 @@ ToyGE结构：
 
     out{
         status      byte
-        length      int32
+        length      int16
         context     byte[]
         [curLnegth] int32
         [nextPart]  int32
@@ -175,8 +177,10 @@ ToyGE结构：
 
 其他：
 
-1.为了尽可能提高内存利用率，对于可变长类型，使用了三种状态：notFull，isFull，hasnext。其中isFull内存利用率最高，也是最可能出现的情况（申请多少用多少）。其他两种在数据的最后有4个字节的冗余。
+1.为了尽可能提高内存利用率，对于可变长类型，使用了三种状态：notFull，isFull，hasnext。其中isFull内存利用率最高，也是最可能出现的情况（申请多少用多少）。其他两种在数据的最后有4个字节的冗余。对最大长度限制为64KB。
 
 2.删除数据后需要对空闲数据尽可能merge，但是必须在O(1)时间内完成，所以使用了向后merge的策略，也防止merge过度导致小块内存缺失。
+
+3.如果删除的内存块体积无法放入nextFree和preFree，则会在单独的链表中进行处理
 
 3.如果没有多余的空闲内存，则将整个cell移动到memory blocks的末尾，并更新索引树。（未实现）

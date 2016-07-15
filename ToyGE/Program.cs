@@ -8,6 +8,20 @@ using System.Threading.Tasks;
 
 namespace ToyGE
 {
+    public class freeStruct
+    {
+        public IntPtr curAddr;
+        public Int32 nextOffset;
+        public Int32 freePre;
+
+        public freeStruct(IntPtr _addr, Int32 _freeNext, Int32 _freePre)
+        {
+            this.addr = _addr;
+            this.freeNext = _freeNext;
+            this.freePre = _freePre;
+        }
+    }
+
     class Program
     {
         /* global variable */
@@ -21,7 +35,10 @@ namespace ToyGE
         static List<int> blockCounts = new List<int>();
 
         //free memory list for every block
-        unsafe static List<IntPtr[]> freeAdds = new List<IntPtr[]>();
+        static List<IntPtr[]> freeAddrs = new List<IntPtr[]>();
+
+        //free little memory list for every block, because some type cannot load freeNext(32) and freePre(32)
+        static List<freeStruct[]> littleFreeAddrs = new List<freeStruct[]>();
 
         ////current last tail addr for every block
         //static List<IntPtr> tailAddrs = new List<IntPtr>();
@@ -93,7 +110,8 @@ namespace ToyGE
             IntPtr memAddr = Marshal.AllocHGlobal(perBlockSize);
             blockAddrs.Add(memAddr);
             int cellCount = 0;  //cell count
-            freeAdds.Add(new IntPtr[1 << 16]);
+            freeAddrs.Add(new IntPtr[1 << 16]);
+            littleFreeAddrs.Add(new freeStruct[64]);
             IntPtr curAddr = memAddr;
 
             //load staitc floder
@@ -107,7 +125,7 @@ namespace ToyGE
                 using (StreamReader reader = new StreamReader(file.FullName))
                 {
                     string line;
-                    IntPtr preAddr = new IntPtr();
+                    IntPtr preAddr = new IntPtr(0);
                     while (null != (line = reader.ReadLine()))
                     {
                         //string to object
@@ -116,13 +134,14 @@ namespace ToyGE
                         //if mem parts is full, create new memory
                         if (curAddr.ToInt64() - memAddr.ToInt64() > (perBlockSize - jsonBack.GetLength()))
                         {
-                            preAddr = new IntPtr();
+                            preAddr = new IntPtr(0);
                             blockCounts.Add(cellCount);
                             memAddr = Marshal.AllocHGlobal(perBlockSize);
                             blockAddrs.Add(memAddr);
                             curAddr = memAddr;
                             cellCount = 0;
-                            freeAdds.Add(new IntPtr[1 << 16]);
+                            freeAddrs.Add(new IntPtr[1 << 16]);
+                            littleFreeAddrs.Add(new freeStruct[64]);
                         }
 
                         //insert one node into memory
@@ -133,6 +152,19 @@ namespace ToyGE
             blockCounts.Add(cellCount);
 
             Console.WriteLine("LoadTxs end..." + DateTime.Now);
+        }
+
+        static unsafe IntPtr CreateMemoryBlock(ref IntPtr memAddr,ref IntPtr preAddr, int cellCount)
+        {
+            preAddr = new IntPtr(0);
+            if (cellCount != 0)
+                blockCounts.Add(cellCount);
+            memAddr = Marshal.AllocHGlobal(perBlockSize);
+            blockAddrs.Add(memAddr);
+            cellCount = 0;
+            freeAddrs.Add(new IntPtr[1 << 16]);
+            littleFreeAddrs.Add(new freeStruct[64]);
+            return memAddr;
         }
 
         //insert one node into memory and b-tree
@@ -201,9 +233,12 @@ namespace ToyGE
             IntPtr nodeAddr = new IntPtr();
             if (Index.BTSearch(hashTree, key, ref nodeAddr))
             {
+                //get whichi block the nodeAddr in
                 int blockIndex = GetBlockIndex(nodeAddr);
+                //reduce count in block, for foreach
                 blockCounts[blockIndex] -= 1;
-                TxHelper.DeleteCell(nodeAddr, freeAdds[blockIndex]);
+
+                TxHelper.DeleteCell(nodeAddr, freeAddrs[blockIndex]);
                 Console.WriteLine("DeleteNode end..." + DateTime.Now);
             }
         }
@@ -230,8 +265,8 @@ namespace ToyGE
             if (Index.BTSearch(hashTree, key, ref nodeAddr))
             {
                 int blockIndex = GetBlockIndex(nodeAddr);
-                IntPtr[] freeAddrs = freeAdds[blockIndex];
-                TxHelper.UpdateHash(nodeAddr, newHash, freeAddrs);
+                IntPtr[] freeAddr = freeAddrs[blockIndex];
+                TxHelper.UpdateHash(nodeAddr, newHash, freeAddr);
                 Console.WriteLine("UpdateHash end..." + DateTime.Now);
             }
         }
@@ -241,7 +276,7 @@ namespace ToyGE
         {
             for (int i = 0; i < blockAddrs.Count; i++)
             {
-                if (cellAddr.ToInt64() > blockAddrs[i].ToInt64())
+                if (cellAddr.ToInt64() >= blockAddrs[i].ToInt64())
                 {
                     return i;
                 }
@@ -252,12 +287,12 @@ namespace ToyGE
         //get suit free space
         static IntPtr GetFreeSpace(int blockIndex, int size)
         {
-            for(int i = size; i < (1 << 16); i++)
+            for (int i = size; i < (1 << 16); i++)
             {
-                if(freeAdds[blockIndex][i].ToInt64() != 0)
+                if (freeAddrs[blockIndex][i].ToInt64() != 0)
                 {
-                    IntPtr result = freeAdds[blockIndex][i];
-                    MemHelper.DeleteFree(result, freeAdds[blockIndex]);
+                    IntPtr result = freeAddrs[blockIndex][i];
+                    MemHelper.DeleteFree(result, freeAddrs[blockIndex]);
                     return result;
                 }
             }

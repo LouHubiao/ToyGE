@@ -369,18 +369,22 @@ namespace ToyGE
             }
         }
 
-        //update cell nextNode
-        public static unsafe void UpdateNextNode(IntPtr curAddr, IntPtr preAddr)
+        //update cell nextNode and preNode
+        public static unsafe void UpdateNextNode_PreNode(IntPtr curAddr, IntPtr preAddr)
         {
-            Int32* nextNode = (Int32*)(preAddr + 1);
-            *nextNode = (Int32)(curAddr.ToInt64() - preAddr.ToInt64());
-        }
+            if (preAddr.ToInt64() != 0)
+            {
+                Int32* pre_nextNode = (Int32*)(preAddr + 1);
+                *pre_nextNode = (Int32)(curAddr.ToInt64() - preAddr.ToInt64());
 
-        //update cell preNode
-        public static unsafe void UpdatePreNode(IntPtr curAddr, IntPtr preAddr)
-        {
-            Int32* preNode = (Int32*)(curAddr + 5);
-            *preNode = (Int32)(curAddr.ToInt64() - preAddr.ToInt64());
+                Int32* cur_preNode = (Int32*)(curAddr + 5);
+                *cur_preNode = (Int32)(curAddr.ToInt64() - preAddr.ToInt64());
+            }
+            else
+            {
+                Int32* cur_preNode = (Int32*)(curAddr + 5);
+                *cur_preNode = (Int32)0;
+            }
         }
 
         #endregion INSERT infor to memory
@@ -491,43 +495,39 @@ namespace ToyGE
         #region DELETE info
 
         //delete string
-        public static unsafe void DeleteString(ref IntPtr memAddr, IntPtr[] freeAdds)
+        public static unsafe void DeleteString(ref IntPtr memAddr, IntPtr[] freeAddr, freeStruct[] littleFreeAddr)
         {
-            Int32* memAddrContext = (Int32*)memAddr.ToPointer();
             IntPtr offsetMemAddr = GetOffsetAddr(ref memAddr);
-            *memAddrContext = 0;    //no use
-            IntPtr deleteAddr = offsetMemAddr;
+            IntPtr contentBeginAddr = offsetMemAddr;
 
+            //delete pointer
+            Int32* memAddrContext = (Int32*)memAddr.ToPointer();
+            *memAddrContext = 0;
+
+            //change status isDelete=1
             byte* status = (byte*)(offsetMemAddr.ToPointer());
+            byte mask = 0x80;
+            *status = (byte)(*status | mask);
             offsetMemAddr += 1;
 
+            //get string length: byte count
             Int16 length = GetInt16(ref offsetMemAddr);
 
+            //if has next part, recursion
             byte hasNextMask = 0x40;
             byte hasNext = (byte)(*status & hasNextMask);
             if (hasNext > 0)
             {
-                //delete next part
                 IntPtr nextPartOffset = offsetMemAddr + length - sizeof(Int16);
-                DeleteString(ref nextPartOffset, freeAdds);
+                DeleteString(ref nextPartOffset, freeAddr, littleFreeAddr);
             }
 
-            //change isDelete
-            byte mask = 0x80;
-            *status = (byte)(*status | mask);
-
-            //get full length
-            Int16 fullLength = (Int16)(length + sizeof(byte) + sizeof(Int32));
-
-            //update length=fullLength
-            InsertFreeLength(deleteAddr, fullLength);
-
             //add to freeAdds
-            InsertFree(deleteAddr, freeAdds, fullLength);
+            InsertFreeList(contentBeginAddr, freeAddr, length);
 
             //merge with after
             IntPtr nextAddr = offsetMemAddr + length;
-            MergeWithNext(deleteAddr, nextAddr, freeAdds);
+            MergeWithNext(contentBeginAddr, nextAddr);
         }
 
         //delete list
@@ -543,6 +543,7 @@ namespace ToyGE
             offsetMemAddr += 1;
 
             Int16 length = GetInt16(ref offsetMemAddr);
+            IntPtr offsetMemAddrCopy = offsetMemAddr;
 
             byte isFullMask = 0x20;
             byte isFull = (byte)(*status & isFullMask);
@@ -590,17 +591,11 @@ namespace ToyGE
             byte mask = 0x80;
             *status = (byte)(*status | mask);
 
-            //get full length
-            Int16 fullLength = (Int16)(length + sizeof(byte) + sizeof(Int32));
-
-            //update length=fullLength
-            InsertFreeLength(deleteAddr, fullLength);
-
             //add to freeAdds
-            InsertFree(deleteAddr, freeAdds, fullLength);
+            InsertFree(deleteAddr, freeAdds, length);
 
             //merge with after
-            IntPtr nextAddr = offsetMemAddr + length;
+            IntPtr nextAddr = offsetMemAddrCopy + length;
             MergeWithNext(deleteAddr, nextAddr, freeAdds);
         }
 
@@ -623,13 +618,23 @@ namespace ToyGE
             }
         }
 
-        static unsafe void InsertFree(IntPtr curAddr, IntPtr[] freeAdds, Int16 length)
+        //insert curAddr part into freeAddrs linedlist
+        static unsafe void InsertFreeList(IntPtr curAddr, IntPtr[] freeAddrs, freeStruct[] littleFreeAdd, Int16 length)
         {
-            UpdateFreeNext(curAddr, freeAdds[length].ToInt64());
-            UpdateFreePre(curAddr, length);
-            IntPtr nextFree = freeAdds[length];
-            UpdateFreePre(nextFree, curAddr.ToInt64());
-            freeAdds[length] = curAddr;
+            if (length >= 64)
+            {
+                UpdateFreeNext(curAddr, freeAddrs[length].ToInt64());
+                UpdateFreePre(curAddr, length);
+                IntPtr nextFree = freeAddrs[length];
+                if (nextFree.ToInt64() != 0)
+                    UpdateFreePre(nextFree, curAddr.ToInt64());
+                freeAddrs[length] = curAddr;
+            }
+            else
+            {
+                freeStruct firstStruct = littleFreeAdd[length];
+                freeStruct curStruct = new freeStruct(curAddr, firstStruct.addr.ToInt32(),length);
+            }
         }
 
         public static unsafe void DeleteFree(IntPtr curAddr, IntPtr[] freeAdds)
@@ -649,31 +654,31 @@ namespace ToyGE
         }
 
         //get next free part
-        static unsafe Int64 GetFreeNext(IntPtr freeAddr)
+        static unsafe Int32 GetFreeNext(IntPtr freeAddr)
         {
-            IntPtr freeNextAddr = freeAddr + sizeof(byte) + sizeof(Int32);
-            return GetInt64(ref freeNextAddr);
+            IntPtr freeNextAddr = freeAddr + sizeof(byte) + sizeof(Int16);
+            return GetInt32(ref freeNextAddr);
         }
 
         //get pre free part
-        static unsafe Int64 GetFreePre(IntPtr freeAddr)
+        static unsafe Int32 GetFreePre(IntPtr freeAddr)
         {
-            IntPtr freeNextAddr = freeAddr + sizeof(byte) + sizeof(Int32) + sizeof(Int64);
-            return GetInt64(ref freeNextAddr);
+            IntPtr freeNextAddr = freeAddr + sizeof(byte) + sizeof(Int16) + sizeof(Int32);
+            return GetInt32(ref freeNextAddr);
         }
 
         //update free part's freeNext
         static unsafe void UpdateFreeNext(IntPtr freeAddr, Int64 addr)
         {
             IntPtr freeNextAddr = freeAddr + sizeof(byte) + sizeof(Int32);
-            InsertInt64(ref freeNextAddr, addr);
+            InsertInt32(ref freeNextAddr, (Int32)(freeNextAddr.ToInt64() - addr));
         }
 
         //update free part's freePre
         static unsafe void UpdateFreePre(IntPtr freeAddr, Int64 addr)
         {
             IntPtr freePreAddr = freeAddr + sizeof(byte) + sizeof(Int32) + sizeof(Int64);
-            InsertInt64(ref freePreAddr, addr);
+            InsertInt32(ref freePreAddr, (Int32)(freePreAddr.ToInt64() - addr));
         }
 
         //get free part's length

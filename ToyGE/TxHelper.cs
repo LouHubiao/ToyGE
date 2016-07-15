@@ -124,11 +124,7 @@ namespace ToyGE
         public static void InsertJsonBack(JSONBack jsonBack, ref IntPtr memAddr, ref IntPtr preAddr, Int16 gap)
         {
             //update nextNode and preNode
-            if (preAddr.ToInt64() != 0)
-            {
-                MemHelper.UpdateNextNode(memAddr, preAddr);
-                MemHelper.UpdatePreNode(memAddr, preAddr);
-            }
+            MemHelper.UpdateNextNode_PreNode(memAddr, preAddr);
             preAddr = memAddr;
 
             //pointer for insert unsure length type, 45 is the length of tx
@@ -150,7 +146,7 @@ namespace ToyGE
             MemHelper.InsertInt64(ref memAddr, jsonBack.time);
 
             //insert ins(X)
-            MemHelper.InsertEntireList<Input>(ref memAddr, jsonBack.ins, ref nextPartAddr, sizeof(Int32), 4, null, InsertIn);
+            MemHelper.InsertEntireList<Input>(ref memAddr, jsonBack.ins, ref nextPartAddr, sizeof(Int32), gap, null, InsertIn);
 
             //insert outs(X)
             MemHelper.InsertEntireList(ref memAddr, jsonBack.outs, ref nextPartAddr, sizeof(Int32), gap, null, MemHelper.InsertEntireString);
@@ -191,34 +187,46 @@ namespace ToyGE
         //delete noed
         public static unsafe void DeleteCell(IntPtr memAddr, IntPtr[] freeAddrs)
         {
-            //update status
-            byte* status = (byte*)(memAddr.ToPointer());
+            //update status IsDelete=1
+            IntPtr statusAddr = memAddr;
+            byte* status = (byte*)(statusAddr.ToPointer());
             byte mask = 0x80;
             *status = (byte)(*status | mask);
-
-            //update cell link list
-            IntPtr nextAddr = new IntPtr(memAddr.ToInt64() + *(Int32*)(memAddr + 1));
-            IntPtr preAddr = new IntPtr(memAddr.ToInt64() - *(Int32*)(memAddr + 5));
-            MemHelper.UpdateNextNode(nextAddr, preAddr);
-            MemHelper.UpdatePreNode(nextAddr, preAddr);
 
             //delete hash
             IntPtr hashAddr = memAddr + 17;
             MemHelper.DeleteString(ref hashAddr, freeAddrs);
 
             //delete ins
-            IntPtr insAddr = memAddr + 21;
+            IntPtr insAddr = memAddr + 29;
             MemHelper.DeleteList<Input>(ref insAddr, freeAddrs, DeleteIn);
 
             //delete outs
-            IntPtr outsAddr = memAddr + 25;
+            IntPtr outsAddr = memAddr + 33;
             MemHelper.DeleteList<Input>(ref outsAddr, freeAddrs, MemHelper.DeleteString);
+
+
+            //update cell link list
+            int length = 44;
+            if (length > 64)
+            {
+                IntPtr nextAddr = new IntPtr(memAddr.ToInt64() + *(Int32*)(memAddr + 1));
+                Int32 preOffset = *(Int32*)(memAddr + 5);
+                IntPtr preAddr = preOffset == 0 ? new IntPtr(0) : new IntPtr(memAddr.ToInt64() - preOffset);
+                MemHelper.UpdateNextNode_PreNode(nextAddr, preAddr);
+            }
+            else
+            {
+
+            }
         }
 
         public static void DeleteIn(ref IntPtr memAddr, IntPtr[] freeAddrs)
         {
+            IntPtr offsetMemAddr = MemHelper.GetOffsetAddr(ref memAddr);
+
             //delete in_addr
-            IntPtr in_addr = memAddr + 1;
+            IntPtr in_addr = offsetMemAddr + 1;
             MemHelper.DeleteString(ref in_addr, freeAddrs);
         }
 
