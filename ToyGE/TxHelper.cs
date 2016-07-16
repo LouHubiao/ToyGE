@@ -208,16 +208,12 @@ namespace ToyGE
 
             //update cell link list
             int length = 44;
-            if (length > 64)
+            if (length >= 64)
             {
                 IntPtr nextAddr = new IntPtr(memAddr.ToInt64() + *(Int32*)(memAddr + 1));
                 Int32 preOffset = *(Int32*)(memAddr + 5);
                 IntPtr preAddr = preOffset == 0 ? new IntPtr(0) : new IntPtr(memAddr.ToInt64() - preOffset);
                 MemHelper.UpdateNextNode_PreNode(nextAddr, preAddr);
-            }
-            else
-            {
-
             }
         }
 

@@ -8,20 +8,6 @@ using System.Threading.Tasks;
 
 namespace ToyGE
 {
-    public class freeStruct
-    {
-        public IntPtr curAddr;
-        public Int32 nextOffset;
-        public Int32 freePre;
-
-        public freeStruct(IntPtr _addr, Int32 _freeNext, Int32 _freePre)
-        {
-            this.addr = _addr;
-            this.freeNext = _freeNext;
-            this.freePre = _freePre;
-        }
-    }
-
     class Program
     {
         /* global variable */
@@ -36,9 +22,6 @@ namespace ToyGE
 
         //free memory list for every block
         static List<IntPtr[]> freeAddrs = new List<IntPtr[]>();
-
-        //free little memory list for every block, because some type cannot load freeNext(32) and freePre(32)
-        static List<freeStruct[]> littleFreeAddrs = new List<freeStruct[]>();
 
         ////current last tail addr for every block
         //static List<IntPtr> tailAddrs = new List<IntPtr>();
@@ -111,14 +94,13 @@ namespace ToyGE
             blockAddrs.Add(memAddr);
             int cellCount = 0;  //cell count
             freeAddrs.Add(new IntPtr[1 << 16]);
-            littleFreeAddrs.Add(new freeStruct[64]);
             IntPtr curAddr = memAddr;
 
             //load staitc floder
             //test: D:\\Bit\\TSLBit\\Generator\\bin\\x64\\Debug\\test
             //full: D:\\Bit\\TSLBit\\Generator\\bin\x64\\Debug\\fullBlocks
             //remote: D:\\v-hulou\\fullBlocks
-            DirectoryInfo dirInfo = new DirectoryInfo(@"D:\\Bit\\TSLBit\\Generator\\bin\\x64\\Debug\\test");
+            DirectoryInfo dirInfo = new DirectoryInfo(@"E:\\BitBlocks\\test");
             foreach (FileInfo file in dirInfo.GetFiles("block90000.txt"))
             {
                 //read json line by line
@@ -141,7 +123,6 @@ namespace ToyGE
                             curAddr = memAddr;
                             cellCount = 0;
                             freeAddrs.Add(new IntPtr[1 << 16]);
-                            littleFreeAddrs.Add(new freeStruct[64]);
                         }
 
                         //insert one node into memory
@@ -163,7 +144,6 @@ namespace ToyGE
             blockAddrs.Add(memAddr);
             cellCount = 0;
             freeAddrs.Add(new IntPtr[1 << 16]);
-            littleFreeAddrs.Add(new freeStruct[64]);
             return memAddr;
         }
 
@@ -214,6 +194,8 @@ namespace ToyGE
                     {
                         if (!MemHelper.IsDeleted(memAddr))
                             result++;
+                        else
+                            j--;
                     }
                     if (*nextOffset == 0)
                         break;
@@ -239,6 +221,7 @@ namespace ToyGE
                 blockCounts[blockIndex] -= 1;
 
                 TxHelper.DeleteCell(nodeAddr, freeAddrs[blockIndex]);
+                MemHelper.ConsoleFree(freeAddrs[blockIndex]);
                 Console.WriteLine("DeleteNode end..." + DateTime.Now);
             }
         }
@@ -282,21 +265,6 @@ namespace ToyGE
                 }
             }
             return -1;
-        }
-
-        //get suit free space
-        static IntPtr GetFreeSpace(int blockIndex, int size)
-        {
-            for (int i = size; i < (1 << 16); i++)
-            {
-                if (freeAddrs[blockIndex][i].ToInt64() != 0)
-                {
-                    IntPtr result = freeAddrs[blockIndex][i];
-                    MemHelper.DeleteFree(result, freeAddrs[blockIndex]);
-                    return result;
-                }
-            }
-            return new IntPtr(0);
         }
     }
 }

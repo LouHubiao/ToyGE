@@ -18,29 +18,21 @@
 
 不定长：
 
-Status表示数据当前的状态，Length表示存储数据的长度（byte为单位）， nextPart此数据的后面部分，nextNode表示后一个节点，preNode表示前一个节点，body表示数据具体内容（注意： **不定长数据必须放在同一个memory block中** ）。内存结构如下：
+Status表示数据当前的状态，Length表示存储数据的长度（byte为单位）， nextPart此数据的后面部分，nextNode表示后一个节点(偏移量)，preNode表示前一个节点(偏移量)，body表示数据具体内容（注意： **使用偏移量而不直接存储内存地址，不定长数据必须放在同一个memory block中** ）。内存结构如下：
 
 memory struct:
 
-    string: status(8)| length(16)| Body| [cruLength(16)]| [nextPart(32)]|
+    string:     status(8)| length(16)| Body| [cruLength(16)]| [nextPart(32)]|
 
-    list:   status(8)| length(16)| Body| [cruLength(16)]| [nextPart(32)]|
+    list:       status(8)| length(16)| Body| [cruLength(16)]| [nextPart(32)]|
 
-    struct: status(8)| Body|
+    struct:     status(8)| Body|
 
-    cell:   status(8)| nextNode(32)| preNode(32)| Body|
+    cell:       status(8)| nextNode(32)| preNode(32)| Body|
 
-    deleted:status(8)| freeNext(32)| freePre(32)| Body|
+    deleted:    status(8)| length(16)| [freeNext(32)]| [freePre(32)]| ...|
 
-status:
-
-    string: isDeleted| hasNext| isFull| ...
-
-    list:   isDeleted| hasNext| isFull| ...
-
-    struct: isDeleted| ...
-
-    cell:   isDeleted| hasLocked| ...
+    status:     isDeleted| hasNext| isFull| IsLocked|...
 
 IsDeleted表示此节点内容是否被删除，在数据被删除后，每隔一段时间，内存会进行碎片整理。
 
@@ -67,8 +59,6 @@ List&lt;IntPtr&gt; memAddrs用于存储每一个内存块的起始地址；
 List&lt;int&gt; memCounts用于存储每一个内存块的cell数量；
 
 List&lt;IntPtr[]&gt; freeAdds用于存储空闲内存链表；
-
-List&lt;freeStruct[]&gt; littleFreeAddrs 用于处理小于64Byte的内存碎片
 
 List&lt;IntPtr&gt; tailAddrs用于存储当前最尾部内存地址（插入新数据的位置）
 
@@ -181,6 +171,6 @@ ToyGE结构：
 
 2.删除数据后需要对空闲数据尽可能merge，但是必须在O(1)时间内完成，所以使用了向后merge的策略，也防止merge过度导致小块内存缺失。
 
-3.如果删除的内存块体积无法放入nextFree和preFree，则会在单独的链表中进行处理
+3.如果删除的内存块体积无法放入nextFree和preFree，则不放入这些冗余数据，作为孤立的空闲内存，等待自动回收内存。
 
 3.如果没有多余的空闲内存，则将整个cell移动到memory blocks的末尾，并更新索引树。（未实现）
