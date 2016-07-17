@@ -14,28 +14,40 @@ using System.Collections.Generic;
 
 namespace ToyGE
 {
-    class BTreeNode
+    class BTreeNode<T>
     {
         //MAX_KEYS = 1024;
         public int isLeaf;  //is this a leaf node?
-        public List<Int64> keys = new List<Int64>();
+        public List<T> keys = new List<T>();
         public List<IntPtr> values = new List<IntPtr>();
-        public List<BTreeNode> kids = new List<BTreeNode>();
+        public List<BTreeNode<T>> kids = new List<BTreeNode<T>>();
     }
 
-    class Index
+    class Index<T>
     {
         const int MAX_KEYS = 1024;
+
+        //t1>t2, retuen 1; 
+        //t1==t2, return 0;
+        //t1<t2, return -1;
+        public delegate int CompareT(T t1, T t2);
+        CompareT compare;
+
+        public delegate T GetDefault();
+        GetDefault getDefault;
+
+        public BTreeNode<T> root;
 
         /// <summary>
         /// init BTree
         /// </summary>
         /// <returns>BTree root</returns>
-        public static BTreeNode BTCreate()
+        public Index(CompareT _compare, GetDefault _getDefault)
         {
-            BTreeNode b = new BTreeNode();
-            b.isLeaf = 1;
-            return b;
+            root = new BTreeNode<T>();
+            root.isLeaf = 1;
+            this.compare = _compare;
+            this.getDefault = _getDefault;
         }
 
         /// <summary>
@@ -44,7 +56,7 @@ namespace ToyGE
         /// <param name="keys">node's keys</param>
         /// <param name="key">target key</param>
         /// <returns>pos in this node</returns>
-        static int SearchKey(List<Int64> keys, Int64 key)
+        public int SearchKey(List<T> keys, T key)
         {
             int lo = -1;
             int hi = keys.Count;
@@ -52,11 +64,11 @@ namespace ToyGE
             while (lo + 1 < hi)
             {
                 mid = (lo + hi) / 2;
-                if (keys[mid] == key)
+                if (compare(keys[mid], key) == 0)
                 {
                     return mid;
                 }
-                else if (keys[mid] < key)
+                else if (compare(keys[mid], key) < 0)
                 {
                     lo = mid;
                 }
@@ -74,7 +86,7 @@ namespace ToyGE
         /// <param name="b">root node of subtree</param>
         /// <param name="key">target key</param>
         /// <returns>the value of key</returns>
-        public static bool BTSearch(BTreeNode b, Int64 key, ref IntPtr result)
+        public bool BTSearch(BTreeNode<T> b, T key, ref IntPtr result)
         {
             int pos;
 
@@ -88,7 +100,7 @@ namespace ToyGE
             pos = SearchKey(b.keys, key);
 
             //return the value of key
-            if (pos < b.keys.Count && b.keys[pos] == key)
+            if (pos < b.keys.Count && compare(b.keys[pos], key) == 0)
             {
                 result = b.values[pos];
                 return true;
@@ -116,17 +128,17 @@ namespace ToyGE
         /// <param name="medianKey">splie out the mid key</param>
         /// <param name="medianValue">splie out the mid value</param>
         /// <returns>if inserted return null, if splited return right child</returns>
-        static BTreeNode BTInsertInternal(BTreeNode b, Int64 key, IntPtr value, ref Int64 medianKey, ref IntPtr medianValue)
+        public BTreeNode<T> BTInsertInternal(BTreeNode<T> b, T key, IntPtr value, ref T medianKey, ref IntPtr medianValue)
         {
             int pos;    //insert pos
             int mid;    //splite pos
-            Int64 midKey = -1;      //splited mid key
+            T midKey = getDefault();      //splited mid key
             IntPtr midValue = new IntPtr();    //splited mid value
-            BTreeNode b2;
+            BTreeNode<T> b2;
 
             pos = SearchKey(b.keys, key);
 
-            if (pos < b.keys.Count && b.keys[pos] == key)
+            if (pos < b.keys.Count && compare(b.keys[pos], key) == 0)
             {
                 //find nothing to do
                 return null;
@@ -159,7 +171,7 @@ namespace ToyGE
                 medianKey = b.keys[mid];
                 medianValue = b.values[mid];
 
-                b2 = new BTreeNode();
+                b2 = new BTreeNode<T>();
 
                 b2.isLeaf = b.isLeaf;
 
@@ -167,8 +179,8 @@ namespace ToyGE
                 int movLen = b.keys.Count - mid - 1;
                 b2.keys = b.keys.GetRange(mid + 1, movLen);
                 b2.values = b.values.GetRange(mid + 1, movLen);
-                b.keys.RemoveRange(mid, movLen+1);
-                b.values.RemoveRange(mid, movLen+1);
+                b.keys.RemoveRange(mid, movLen + 1);
+                b.values.RemoveRange(mid, movLen + 1);
                 if (b.isLeaf == 0)
                 {
                     //Console.WriteLine(b.kids.Count);
@@ -183,11 +195,11 @@ namespace ToyGE
         }
 
         //insert one node into BTree
-        public static void BTInsert(ref BTreeNode b, Int64 key, IntPtr value)
+        public void BTInsert(ref BTreeNode<T> b, T key, IntPtr value)
         {
-            BTreeNode b1;   //new left child
-            BTreeNode b2;   //new right child
-            Int64 medianKey = -1;
+            BTreeNode<T> b1;   //new left child
+            BTreeNode<T> b2;   //new right child
+            T medianKey = getDefault();
             IntPtr medianValue = new IntPtr();
 
             b2 = BTInsertInternal(b, key, value, ref medianKey, ref medianValue);
@@ -199,7 +211,7 @@ namespace ToyGE
                 b1 = b;
 
                 // make root point to b1 and b2
-                b = new BTreeNode();
+                b = new BTreeNode<T>();
                 b.isLeaf = 0;
                 b.keys.Add(medianKey);
                 b.values.Add(medianValue);

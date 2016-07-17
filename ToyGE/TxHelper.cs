@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using Newtonsoft.Json;
 
 /*	
     In Memory:
@@ -9,62 +7,59 @@ using Newtonsoft.Json;
         status      byte
         nextNode    int32   // next node
         preNode     int32   // pre node
-        CellID	    Int64
+        CellID      Int64
         hash        int32   // =>hash
-        time	    Int64
-        ins		    int32   // =>ins
-        outs	    int32   // =>outs
-        amount	    Int64
+        time        Int64
+        ins         int32   // =>ins
+        outs        int32   // =>outs
+        amount      Int64
     }
 
     hash{
         status      byte
-        strLen      int32
-        strMaxLen   int32
-        nextPart    Int64
-        context     char[]
+        length      int16
+        context     byte[]
+        [curLnegth] int32
+        [nextPart]  int32
     }
 
     ins{
         status      byte
-        listLen     int32
-        listMaxLen  int32
-        nextPart    Int64
-        in_1        int32   // =>in
-        ...
-        in_N        int32   // =>in
+        length      int16
+        context     int32[] //=>in
+        [curLnegth] int32
+        [nextPart]  int32
     }
 
     in{
         status      byte
-        addr        int32   // => 
+        addr        int32   // =>in_addr
         tx_index    Int64
     }
 
     in_addr{
         status      byte
-        strLen      int32
-        strMaxLen   int32
-        nextPart    Int64
-        context     char[]
+        length      int16
+        context     byte[]
+        [curLnegth] int32
+        [nextPart]  int32
     }
 
     outs{
         status      byte
-        listLen     int32
-        listMaxLen  int32
-        nextPart    Int64
-        out_1       int32   // =>out
-        ...
-        out_N       int32   // =>out
+        length      int16
+        context     int32[] //=>out
+        [curLnegth] int32
+        [nextPart]  int32
+
     }
 
     out{
         status      byte
-        strLen      int32
-        strMaxLen   int32
-        nextPart    Int64
-        context     char[]
+        length      int16
+        context     byte[]
+        [curLnegth] int32
+        [nextPart]  int32
     }
 */
 
@@ -76,33 +71,28 @@ namespace ToyGE
         public static JSONBack GetCell(IntPtr jsonBackAddr)
         {
             JSONBack jsonBack = new JSONBack();
-            try
-            {
-                // jump cellStatus/ cellNextNode/ cellPreNode
-                MemHelper.addrJump(ref jsonBackAddr, 9);
 
-                //read cellID
-                jsonBack.CellID = MemHelper.GetInt64(ref jsonBackAddr);
+            // jump cellStatus/ cellNextNode/ cellPreNode
+            MemHelper.addrJump(ref jsonBackAddr, 9);
 
-                //read hash
-                jsonBack.hash = MemHelper.GetString(ref jsonBackAddr);
+            //read cellID
+            jsonBack.CellID = MemHelper.GetInt64(ref jsonBackAddr);
 
-                //read time
-                jsonBack.time = MemHelper.GetInt64(ref jsonBackAddr);
+            //read hash
+            jsonBack.hash = MemHelper.GetString(ref jsonBackAddr);
 
-                //read ins
-                jsonBack.ins = MemHelper.GetList<Input>(ref jsonBackAddr, GetIn);
+            //read time
+            jsonBack.time = MemHelper.GetInt64(ref jsonBackAddr);
 
-                //read outs
-                jsonBack.outs = MemHelper.GetList<string>(ref jsonBackAddr, MemHelper.GetString);
+            //read ins
+            jsonBack.ins = MemHelper.GetList<Input>(ref jsonBackAddr, GetIn);
 
-                //time amount
-                jsonBack.amount = MemHelper.GetInt64(ref jsonBackAddr);
-            }
-            catch (Exception e)
-            {
-                return null;
-            }
+            //read outs
+            jsonBack.outs = MemHelper.GetList<string>(ref jsonBackAddr, MemHelper.GetString);
+
+            //time amount
+            jsonBack.amount = MemHelper.GetInt64(ref jsonBackAddr);
+
             return jsonBack;
         }
 
@@ -121,7 +111,7 @@ namespace ToyGE
         }
 
         //convert jsonback to byte[] in memory
-        public static void InsertJsonBack(JSONBack jsonBack, ref IntPtr memAddr, ref IntPtr preAddr, Int16 gap)
+        public static void InsertCell(JSONBack jsonBack, ref IntPtr memAddr, ref IntPtr preAddr, Int16 gap)
         {
             //update nextNode and preNode
             MemHelper.UpdateNextNode_PreNode(memAddr, preAddr);
@@ -184,7 +174,7 @@ namespace ToyGE
             MemHelper.InsertEntireString(ref memAddr, _out, ref nextPartAddr, gap);
         }
 
-        //delete noed
+        //delete tx cell
         public static unsafe void DeleteCell(IntPtr memAddr, IntPtr[] freeAddrs)
         {
             //update status IsDelete=1

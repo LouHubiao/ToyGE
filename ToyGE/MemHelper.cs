@@ -269,7 +269,7 @@ namespace ToyGE
 
         //insert list, must has enough space
         public delegate void InsertListPartPointer<T>(ref IntPtr memAddr, T input, ref IntPtr nextPartAddr, Int16 gap);
-        public delegate void InsertListPart<T>(ref IntPtr memAddr, T input, Int16 gap);
+        public delegate void InsertListPart<T>(ref IntPtr memAddr, T input);
         public static void InsertEntireList<T>(ref IntPtr memAddr, List<T> inputs, ref IntPtr nextPartAddr, Int16 tLength, Int16 gap, InsertListPart<T> insertListPart, InsertListPartPointer<T> insertListPartPointer)
         {
             //insert pointer
@@ -303,7 +303,7 @@ namespace ToyGE
                     //insert list content
                     for (int i = 0; i < inputs.Count; i++)
                     {
-                        insertListPart(ref nextPartAddr, inputs[i], gap);
+                        insertListPart(ref nextPartAddr, inputs[i]);
                     }
                 }
             }
@@ -330,7 +330,7 @@ namespace ToyGE
                     //insert list content
                     for (int i = 0; i < inputs.Count; i++)
                     {
-                        insertListPart(ref nextPartAddr, inputs[i], gap);
+                        insertListPart(ref nextPartAddr, inputs[i]);
                     }
                 }
             }

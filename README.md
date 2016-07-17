@@ -42,11 +42,9 @@ IsLocked表示此数据是否正在被修改（包括增加、删除、修改）
 
 ## 索引结构：
 
-使用B树进行索引。后面需要支持多种key类型。
+使用B树进行索引。支持多种key类型，object需要设置campare方法。
 
-BTreeNode hashTree用于存储索引。
-
-## 内存管理（单cell）：
+## 内存管理：
 
  首先申请一片连续内存块，并设置为手动释放模式，如果在使用过程中内存地址超出此内存块最大限制， 则申请新的一片内存块。
 
@@ -88,16 +86,21 @@ GE结构：
 
     struct In
     {
-            CellId tx\_index;        //发起方比特币来源
+            CellId tx_index;        //发起方比特币来源
             string addr;                //发起方地址
     }
     cellstruct Tx
     {
             long time;                //支付发生的时间
             string hash;                //支付的64位hash值
-            List&lt;In&gt; ins;                //支付发起方信息
-            List&lt;string&gt; outs;        //支付接收方地址列表
+            List<In>; ins;                //支付发起方信息
+            List<string> outs;        //支付接收方地址列表
             long amount;                //支付金额
+    }
+
+    cell User
+    {
+        List<long> txs;     //某个地址相关的所有支付记录
     }
 
 ToyGE结构：
@@ -113,7 +116,6 @@ ToyGE结构：
         outs        int32   // =>outs
         amount      Int64
     }
-
     hash{
         status      byte
         length      int16
@@ -121,7 +123,6 @@ ToyGE结构：
         [curLnegth] int32
         [nextPart]  int32
     }
-
     ins{
         status      byte
         length      int16
@@ -129,13 +130,11 @@ ToyGE结构：
         [curLnegth] int32
         [nextPart]  int32
     }
-
     in{
         status      byte
         addr        int32   // =>in_addr
         tx_index    Int64
     }
-
     in_addr{
         status      byte
         length      int16
@@ -143,7 +142,6 @@ ToyGE结构：
         [curLnegth] int32
         [nextPart]  int32
     }
-
     outs{
         status      byte
         length      int16
@@ -152,7 +150,6 @@ ToyGE结构：
         [nextPart]  int32
 
     }
-
     out{
         status      byte
         length      int16
@@ -161,9 +158,31 @@ ToyGE结构：
         [nextPart]  int32
     }
 
-插入数据：
+    User {
+        status      byte
+        nextNode    int32   // next node
+        preNode     int32   // pre node
+        txs         int32   // =>txs
+    }
+    txs{
+        status      byte
+        length      int16
+        cellID      Int64[]
+        [curLnegth] int32
+        [nextPart]  int32
+    }
+
+插入数据举例：
 
 {&quot;CellID&quot;:15029, &quot;hash&quot;:&quot;f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16&quot;, &quot;time&quot;:1231731025, &quot;ins&quot;:[{&quot;addr&quot;:&quot;12cbQLTFMXRnSzktFkuoG3eHoMeFtpTu3S&quot;, &quot;tx\_index&quot;:14862}, &quot;addr&quot;:&quot;1LzBzVqEeuQyjD2mRWHes3dgWrT9titxvq&quot;, &quot;tx\_index&quot;:15045}], &quot;outs&quot;:[&quot;1Q2TWHE3GMdB6BZKafqwxXtWAWgFt5Jvm3&quot;,&quot;12cbQLTFMXRnSzktFkuoG3eHoMeFtpTu3S&quot;], &quot;amount&quot;:1000000000}
+
+测试结果：
+    GE:
+        只用Tx，占用内存4.1G，耗时2分钟
+        Tx+User，占用4.6G，耗时2分钟
+    ToyGE:
+        只用Tx，占用2.6G，耗时2分钟
+        Tx+User，占用3.6G，耗时4分钟
 
 其他：
 
@@ -171,6 +190,8 @@ ToyGE结构：
 
 2.删除数据后需要对空闲数据尽可能merge，但是必须在O(1)时间内完成，所以使用了向后merge的策略，也防止merge过度导致小块内存缺失。
 
-3.如果删除的内存块体积无法放入nextFree和preFree，则不放入这些冗余数据，作为孤立的空闲内存，等待自动回收内存。
+3.如果删除的内存块体积无法放入nextFree和preFree，则不放入这些冗余数据，作为孤立的空闲内存，等待自动回收内存。（自动回收未完成）
 
-3.如果没有多余的空闲内存，则将整个cell移动到memory blocks的末尾，并更新索引树。（未实现）
+4.在update string和插入listPart过程中，如果没有多余的空闲内存，则将整个cell移动到memory blocks的末尾，并更新索引树。（未完成）
+
+5.对于不同的schema，需要并发执行Load。（未完成）
