@@ -121,19 +121,19 @@ namespace ToyGE
             IntPtr nextPartAddr = memAddr + 45;
 
             //insert cellStatus
-            MemHelper.InsertByte(ref memAddr, (byte)0);
+            MemHelper.InsertValue(ref memAddr, (byte)0);
 
             //jump nextNode and preNode, has updated
             MemHelper.addrJump(ref memAddr, 8);
 
             //insert CellID
-            MemHelper.InsertInt64(ref memAddr, jsonBack.CellID);
+            MemHelper.InsertValue(ref memAddr, jsonBack.CellID);
 
             //insert hash(X)
             MemHelper.InsertEntireString(ref memAddr, jsonBack.hash, ref nextPartAddr, gap);
 
             //insert time
-            MemHelper.InsertInt64(ref memAddr, jsonBack.time);
+            MemHelper.InsertValue(ref memAddr, jsonBack.time);
 
             //insert ins(X)
             MemHelper.InsertEntireList<Input>(ref memAddr, jsonBack.ins, ref nextPartAddr, sizeof(Int32), gap, null, InsertIn);
@@ -142,7 +142,7 @@ namespace ToyGE
             MemHelper.InsertEntireList(ref memAddr, jsonBack.outs, ref nextPartAddr, sizeof(Int32), gap, null, MemHelper.InsertEntireString);
 
             //insert amount
-            MemHelper.InsertInt64(ref memAddr, jsonBack.amount);
+            MemHelper.InsertValue(ref memAddr, jsonBack.amount);
 
             memAddr = nextPartAddr;
         }
@@ -151,19 +151,19 @@ namespace ToyGE
         static void InsertIn(ref IntPtr memAddr, Input input, ref IntPtr nextPartAddr, Int16 gap)
         {
             //insert pointer
-            MemHelper.InsertInt32(ref memAddr, (Int32)(nextPartAddr.ToInt64() - memAddr.ToInt64()));
+            MemHelper.InsertValue(ref memAddr, (Int32)(nextPartAddr.ToInt64() - memAddr.ToInt64()));
 
             //struct length
             IntPtr nextNextPartAddr = nextPartAddr + 13;
 
             //insert inStatus
-            MemHelper.InsertByte(ref nextPartAddr, (byte)0);
+            MemHelper.InsertValue(ref nextPartAddr, (byte)0);
 
             //insert in_addr
             MemHelper.InsertEntireString(ref nextPartAddr, input.addr, ref nextNextPartAddr, gap);
 
             //insert tx_index
-            MemHelper.InsertInt64(ref nextPartAddr, input.tx_index);
+            MemHelper.InsertValue(ref nextPartAddr, input.tx_index);
 
             nextPartAddr = nextNextPartAddr;
         }
@@ -229,7 +229,7 @@ namespace ToyGE
         {
             //pointer for amount
             memAddr += 37;
-            MemHelper.InsertInt64(ref memAddr, newAmount);
+            MemHelper.InsertValue(ref memAddr, newAmount);
         }
     }
 }

@@ -120,35 +120,6 @@ namespace ToyGE
             Console.WriteLine("LoadTxs end..." + DateTime.Now);
         }
 
-        public static void InsertListPart(IntPtr cellAddr, Int64 tx)
-        {
-            IntPtr offsetMemAddr = MemHelper.GetOffsetAddr(ref cellAddr);
-
-            byte status = MemHelper.GetByte(ref offsetMemAddr);
-
-            byte isFullMask = 0x20;
-            byte isFull = (byte)(status & isFullMask);
-
-            Int16 length = MemHelper.GetInt16(ref offsetMemAddr);
-
-            if (isFull > 0)
-            {
-                //change from isFull to hasNext
-
-            }
-            else
-            {
-                byte hasNextMask = 0x40;
-                byte hasNext = (byte)(status & hasNextMask);
-                if (hasNext > 0)
-                {
-
-                }
-                else
-                {
-
-                }
-            }
-        }
+        
     }
 }

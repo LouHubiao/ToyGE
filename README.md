@@ -177,6 +177,7 @@ ToyGE结构：
 {&quot;CellID&quot;:15029, &quot;hash&quot;:&quot;f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16&quot;, &quot;time&quot;:1231731025, &quot;ins&quot;:[{&quot;addr&quot;:&quot;12cbQLTFMXRnSzktFkuoG3eHoMeFtpTu3S&quot;, &quot;tx\_index&quot;:14862}, &quot;addr&quot;:&quot;1LzBzVqEeuQyjD2mRWHes3dgWrT9titxvq&quot;, &quot;tx\_index&quot;:15045}], &quot;outs&quot;:[&quot;1Q2TWHE3GMdB6BZKafqwxXtWAWgFt5Jvm3&quot;,&quot;12cbQLTFMXRnSzktFkuoG3eHoMeFtpTu3S&quot;], &quot;amount&quot;:1000000000}
 
 测试结果：
+
     GE:
         只用Tx，占用内存4.1G，耗时2分钟
         Tx+User，占用4.6G，耗时2分钟

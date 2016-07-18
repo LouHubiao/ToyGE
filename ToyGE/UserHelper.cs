@@ -50,13 +50,13 @@ namespace ToyGE
             IntPtr nextPartAddr = memAddr + 13;
 
             //insert cellStatus
-            MemHelper.InsertByte(ref memAddr, (byte)0);
+            MemHelper.InsertValue(ref memAddr, (byte)0);
 
             //jump nextNode and preNode, has updated
             MemHelper.addrJump(ref memAddr, 8);
 
             //insert txs(X)
-            MemHelper.InsertEntireList(ref memAddr, userTxs, ref nextPartAddr, sizeof(Int32), gap, MemHelper.InsertInt64, null);
+            MemHelper.InsertEntireList(ref memAddr, userTxs, ref nextPartAddr, sizeof(Int32), gap, MemHelper.InsertValue, null);
 
             memAddr = nextPartAddr;
         }
