@@ -30,7 +30,7 @@ namespace ToyGE
         }
 
         //get nextOffset(Int32) addr at tail
-        public static unsafe IntPtr GetNextOffsetAddr(ref IntPtr memAddrAfterLength, Int16 length)
+        public static unsafe IntPtr GetNextOffsetAddr(IntPtr memAddrAfterLength, Int16 length)
         {
             return memAddrAfterLength + length - sizeof(Int32);
         }
@@ -43,17 +43,17 @@ namespace ToyGE
         }
 
         //get curlen(Int16) at tail
-        public static unsafe Int16 GetCurLen(IntPtr memAddrAfterLength, Int16 length)
+        public static unsafe Int16 GetCurCount(IntPtr memAddrAfterLength, Int16 length)
         {
             IntPtr curLengthAddr = memAddrAfterLength + length - sizeof(Int16);
             return MemInt16.GetValue(ref curLengthAddr);
         }
 
         //set curlen(Int16) at tail
-        public static unsafe void SetCurLen(IntPtr memAddrAfterLength, Int16 length, Int16 curLength)
+        public static unsafe void SetCurCount(IntPtr memAddrAfterLength, Int16 length, Int16 count)
         {
             IntPtr curLengthAddr = memAddrAfterLength + length - sizeof(Int16);
-            MemInt16.SetValue(ref curLengthAddr, curLength);
+            MemInt16.SetValue(ref curLengthAddr, count);
         }
 
         //jump nouse part
@@ -233,52 +233,53 @@ namespace ToyGE
             else
             {
                 //not full
-                Int16 curLength = MemTool.GetCurLen(offsetMemAddr, length);
-                return GetChars(ref offsetMemAddr, curLength);
+                Int16 curCount = MemTool.GetCurCount(offsetMemAddr, length);
+                return GetChars(ref offsetMemAddr, curCount);
             }
         }
 
         //insert Entire string, must has enough space
-        public static unsafe void SetString(ref IntPtr memAddr, ref IntPtr nextPartAddr, string content, Int16 gap)
+        public static unsafe bool SetString(ref IntPtr memAddr, IntPtr[] freeList, IntPtr headAddr, IntPtr tailAddr, Int64 blockLength, string content, Int16 gap)
         {
+
             //insert pointer
-            MemInt32.SetValue(ref memAddr, (Int32)(nextPartAddr.ToInt64() - memAddr.ToInt64()));
+            MemInt32.SetValue(ref memAddr, (Int32)(nextFreeAddr.ToInt64() - memAddr.ToInt64()));
 
             if (gap != 0)
             {
                 //insert status
-                MemByte.SetValue(ref nextPartAddr, (byte)0x0);
+                MemByte.SetValue(ref nextFreeAddr, (byte)0x0);
 
                 //insert length
                 Int16 length = (Int16)(content.Length + sizeof(Int16) + gap);
-                MemInt16.SetValue(ref nextPartAddr, length);
+                MemInt16.SetValue(ref nextFreeAddr, length);
 
                 //lastAddr buffer
-                IntPtr lastAddr = nextPartAddr + length;
+                IntPtr lastAddr = nextFreeAddr + length;
 
                 //insert curLength
-                MemTool.SetCurLen(nextPartAddr, length, (Int16)(content.Length));
+                MemTool.SetCurCount(nextFreeAddr, length, (Int16)(content.Length));
 
                 //inser content
-                InsertChars(ref nextPartAddr, content);
+                InsertChars(ref nextFreeAddr, content);
 
                 //nextPartAddr jump to last
-                nextPartAddr = lastAddr;
+                nextFreeAddr = lastAddr;
             }
             else
             {
                 //insert status, isFull=1
-                MemByte.SetValue(ref nextPartAddr, (byte)0x20);
+                MemByte.SetValue(ref nextFreeAddr, (byte)0x20);
 
                 //insert length
-                MemInt16.SetValue(ref nextPartAddr, (Int16)content.Length);
+                MemInt16.SetValue(ref nextFreeAddr, (Int16)content.Length);
 
                 //inser content
-                InsertChars(ref nextPartAddr, content);
+                InsertChars(ref nextFreeAddr, content);
             }
         }
 
-        //delete string
+        //delete Entire string
         public static unsafe void DeleteString(ref IntPtr memAddr, IntPtr[] freeList)
         {
             //get offseted addr
@@ -303,7 +304,7 @@ namespace ToyGE
             //if has next part, recursion
             if (MemStatus.GetHasNext(*status) == true)
             {
-                IntPtr nextPartOffset = MemTool.GetNextOffsetAddr(ref offsetMemAddr, length);
+                IntPtr nextPartOffset = MemTool.GetNextOffsetAddr(offsetMemAddr, length);
                 DeleteString(ref nextPartOffset, freeList);
             }
 
@@ -318,6 +319,114 @@ namespace ToyGE
                 MemFreeList.MergeWithNext(contentBeginAddr, nextAddr, freeList);
             }
             //else drop and wait to auto GC
+        }
+
+        //update string, return false is no free space, return true is update success
+        public static unsafe bool UpdateString(ref IntPtr memAddr, string newValue, IntPtr[] freeList, IntPtr headAddr, IntPtr tailAddr, Int64 blockLength, Int16 gap)
+        {
+            //get offseted addr
+            IntPtr offsetMemAddr = MemTool.GetOffsetedAddr(ref memAddr);
+
+            //get status
+            byte* status = (byte*)(offsetMemAddr.ToPointer());
+
+            //go to next pointer
+            offsetMemAddr += 1;
+
+            //get length
+            Int16 length = MemInt16.GetValue(ref offsetMemAddr);
+
+            //update content
+            if (MemStatus.GetHasNext(*status) == true)
+            {
+                if (length > newValue.Length)
+                {
+                    //delete nextPart
+                    IntPtr nextPartAddr = MemTool.GetNextOffsetAddr(offsetMemAddr, length);
+                    DeleteString(ref nextPartAddr, freeList);
+
+                    //update status, hasNext=0, isFull=0
+                    MemStatus.SetHasNext(status, false);
+                    MemStatus.SetIsFull(status, false);
+
+                    //insert curLength
+                    MemTool.SetCurCount(offsetMemAddr, length, (Int16)newValue.Length);
+
+                    //insert content
+                    InsertChars(ref offsetMemAddr, newValue);
+                }
+                else if (length == newValue.Length)
+                {
+                    //delete nextPart
+                    IntPtr nextPartAddr = MemTool.GetNextOffsetAddr(offsetMemAddr, length);
+                    DeleteString(ref nextPartAddr, freeList);
+
+                    //insert status, hasNext=0, isFull=1
+                    MemStatus.SetHasNext(status, false);
+                    MemStatus.SetIsFull(status, true);
+
+                    //insert content
+                    InsertChars(ref offsetMemAddr, newValue);
+                }
+                else
+                {
+                    //get nextPart offset addr
+                    IntPtr nextPartAddr = MemTool.GetNextOffsetAddr(offsetMemAddr, length);
+
+                    //insert content, left into orig, right into next
+                    string leftString = newValue.Substring(0, length - sizeof(Int32));
+                    InsertChars(ref offsetMemAddr, leftString);
+
+                    string rigthtString = newValue.Substring(length - sizeof(Int32));
+                    UpdateString(ref nextPartAddr, rigthtString, freeList, headAddr, tailAddr, blockLength, gap);
+                }
+            }
+            else
+            {
+                if (length > newValue.Length)
+                {
+                    //update status, isFull=0
+                    MemStatus.SetIsFull(status, false);
+
+                    //insert curCount
+                    MemTool.SetCurCount(offsetMemAddr, length, (Int16)newValue.Length);
+
+                    //insert content
+                    InsertChars(ref offsetMemAddr, newValue);
+                }
+                else if (length == newValue.Length)
+                {
+                    //insert status, isFull=1
+                    MemStatus.SetIsFull(status, true);
+
+                    //insert content
+                    InsertChars(ref offsetMemAddr, newValue);
+                }
+                else
+                {
+                    //get nextPart offset addr
+                    IntPtr nextPartOffset = MemTool.GetNextOffsetAddr(offsetMemAddr, length);
+
+                    //update status, hasNext=1, isFull=0
+                    MemStatus.SetHasNext(status, true);
+                    MemStatus.SetIsFull(status, false);
+
+                    //insert content, left into orig
+                    string leftString = newValue.Substring(0, length - sizeof(Int32));
+                    InsertChars(ref offsetMemAddr, leftString);
+
+                    //insert content, right into new next free
+                    string rigthtString = newValue.Substring(length - sizeof(Int32));
+
+                    //get nextFreeAddr in this block
+                    IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock(freeList, headAddr, tailAddr, blockLength, (Int16)rigthtString.Length);
+                    if (nextFreeInBlock.ToInt64() == 0)
+                        return false;   //update false
+
+                    SetString(ref nextPartOffset, ref nextFreeInBlock, rigthtString, gap);
+                }
+            }
+            return true;
         }
 
         //get string content
@@ -380,9 +489,9 @@ namespace ToyGE
 
     class MemList
     {
-        //get entire string
-        public delegate T GetListPart<T>(ref IntPtr memAddr);
-        public static List<T> GetList<T>(ref IntPtr memAddr, GetListPart<T> getListPart)
+        //get entire list, getListPart like GetString()
+        public delegate T GetListItem<T>(ref IntPtr memAddr);
+        public static List<T> GetList<T>(ref IntPtr memAddr, GetListItem<T> getListPart)
         {
             //last result
             List<T> result = new List<T>();
@@ -393,12 +502,11 @@ namespace ToyGE
             //get status
             byte status = MemByte.GetValue(ref offsetMemAddr);
 
-            byte isFullMask = 0x20;
-            byte isFull = (byte)(status & isFullMask);
-
+            //get length
             Int16 length = MemInt16.GetValue(ref offsetMemAddr);
 
-            if (isFull > 0)
+            //get context
+            if (MemStatus.GetIsFull(status) == true)
             {
                 IntPtr lastAddr = offsetMemAddr + length;
                 while (offsetMemAddr.ToInt64() < lastAddr.ToInt64())
@@ -408,182 +516,28 @@ namespace ToyGE
             }
             else
             {
-                byte hasNextMask = 0x40;
-                byte hasNext = (byte)(status & hasNextMask);
-                if (hasNext > 0)
+                if (MemStatus.GetHasNext(status) == true)
                 {
-                    IntPtr lastAddr = offsetMemAddr + length - sizeof(Int32);
+                    IntPtr lastAddr = MemTool.GetNextOffsetAddr(offsetMemAddr, length);
                     while (offsetMemAddr.ToInt64() < lastAddr.ToInt64())
                     {
                         result.Add(getListPart(ref offsetMemAddr));
                     }
 
-                    Int32 strNextPartOffset = GetInt32(ref offsetMemAddr);
-
-                    IntPtr nextPartAddr = offsetMemAddr + strNextPartOffset;
-
-                    result.AddRange(GetList<T>(ref nextPartAddr, getListPart));
+                    //next part
+                    result.AddRange(GetList<T>(ref offsetMemAddr, getListPart));
                 }
                 else
                 {
-                    IntPtr curLengthAddr = offsetMemAddr + length - sizeof(Int16);
-                    Int16 curLength = GetInt16(ref curLengthAddr);
-
-                    for (int i = 0; i < curLength; i++)
+                    Int16 curCount = MemTool.GetCurCount(offsetMemAddr, length);
+                    for (int i = 0; i < curCount; i++)
                     {
                         result.Add(getListPart(ref offsetMemAddr));
                     }
-                    offsetMemAddr = curLengthAddr;
                 }
             }
-
             return result;
         }
-    }
-
-    class MemFreeList
-    {
-        //insert curAddr part into freeList linedlist with length
-        public static unsafe void InsertFreeList(IntPtr curAddr, Int16 length, IntPtr[] freeList)
-        {
-            //update curAddr's next and pre free part
-            UpdateFreeNext(curAddr, freeList[length]);
-            UpdateFreePre(curAddr, new IntPtr(0)); //insert 0 because curAddr is head
-
-            //update cur freeList head's pre
-            IntPtr nextFree = freeList[length];
-            if (nextFree.ToInt64() != 0)
-                UpdateFreePre(nextFree, curAddr);
-
-            //update freeList head
-            freeList[length] = curAddr;
-        }
-
-        //merge with next free part, next free part is close to cur free part
-        public static unsafe void MergeWithNext(IntPtr curAddr, IntPtr nextAddr, IntPtr[] freeAdds)
-        {
-            //get status
-            byte* status = (byte*)nextAddr.ToPointer();
-
-            if (MemStatus.GetIsDeleted(*status) == true)
-            {
-                //delete cur free part
-                DeleteFromFreelist(curAddr, freeAdds);
-
-                //delete next free part
-                DeleteFromFreelist(nextAddr, freeAdds);
-
-                //get new length
-                Int16 curLen = *(Int16*)(curAddr + sizeof(byte)).ToPointer();
-                Int16 nextLen = *(Int16*)(nextAddr + sizeof(byte)).ToPointer();
-                Int16 mergeLength = (Int16)(curLen + nextLen + sizeof(byte) + sizeof(Int16));
-
-                //update length
-                Int16* freeLenAddr = (Int16*)(curAddr + sizeof(byte));
-                *freeLenAddr = mergeLength;
-
-                //insert new one
-                InsertFreeList(curAddr, mergeLength, freeAdds);
-
-                //merge again
-                IntPtr nextNextAddr = GetFreeNext(curAddr);
-                if (nextNextAddr.ToInt64() != 0)
-                    MergeWithNext(curAddr, nextNextAddr, freeAdds);
-            }
-        }
-
-        //update free part's freeNext, curAddr to nextAddr
-        static unsafe void UpdateFreeNext(IntPtr curAddr, IntPtr nextAddr)
-        {
-            IntPtr nextOffsetAddr = curAddr + sizeof(byte) + sizeof(Int16);
-            if (nextAddr.ToInt64() != 0)
-                MemInt32.SetValue(ref nextOffsetAddr, (Int32)(nextAddr.ToInt32() - nextOffsetAddr.ToInt32() - sizeof(Int32)));
-            else
-                MemInt32.SetValue(ref nextOffsetAddr, 0);
-        }
-
-        //update free part's freePre, curAddr to preAddr
-        static unsafe void UpdateFreePre(IntPtr curAddr, IntPtr preAddr)
-        {
-            IntPtr preOffsetAddr = curAddr + sizeof(byte) + sizeof(Int16) + sizeof(Int32);
-            if (preAddr.ToInt64() != 0)
-                MemInt32.SetValue(ref preOffsetAddr, (Int32)(preOffsetAddr.ToInt32() + sizeof(Int32) - preAddr.ToInt32()));
-            else
-                MemInt32.SetValue(ref preOffsetAddr, 0);
-        }
-
-        //delete the part(curAddr) from the freeAddr
-        public static unsafe void DeleteFromFreelist(IntPtr curAddr, IntPtr[] freeAddr)
-        {
-            IntPtr freeNext = GetFreeNext(curAddr);
-            IntPtr freePre = GetFreePre(curAddr);
-            if (freePre.ToInt64() == 0)
-            {
-                Int16 length = *(Int16*)(curAddr + sizeof(byte)).ToPointer();
-                freeAddr[length] = curAddr;
-            }
-            else
-            {
-                UpdateFreeNext(freePre, freeNext);
-                if (freeNext.ToInt64() != 0)
-                    UpdateFreePre(freeNext, freePre);
-            }
-        }
-
-        //get next free part
-        static unsafe IntPtr GetFreeNext(IntPtr freeAddr)
-        {
-            IntPtr nextOffsetAddr = freeAddr + sizeof(byte) + sizeof(Int16);
-            Int32 nextOffset = MemInt32.GetValue(ref nextOffsetAddr);
-            if (nextOffset == 0)
-                return new IntPtr(0);
-            return nextOffsetAddr + nextOffset;
-        }
-
-        //get pre free part
-        static unsafe IntPtr GetFreePre(IntPtr freeAddr)
-        {
-            IntPtr preOffsetAddr = freeAddr + sizeof(byte) + sizeof(Int16) + sizeof(Int32);
-            Int32 preOffset = MemInt32.GetValue(ref preOffsetAddr);
-            if (preOffset == 0)
-                return new IntPtr(0);
-            return preOffsetAddr - preOffset;
-        }
-    }
-
-    class MemCell
-    {
-        //update cell(updatingAddr) nextNode and preNode
-        public static unsafe void UpdateNextNode_PreNode(IntPtr updatingAddr, IntPtr preAddr)
-        {
-            if (preAddr.ToInt64() != 0)
-            {
-                Int32* pre_nextNode = (Int32*)(preAddr + 1);
-                *pre_nextNode = (Int32)(updatingAddr.ToInt64() - preAddr.ToInt64());
-
-                Int32* cur_preNode = (Int32*)(updatingAddr + 5);
-                *cur_preNode = (Int32)(updatingAddr.ToInt64() - preAddr.ToInt64());
-            }
-            else
-            {
-                Int32* cur_preNode = (Int32*)(updatingAddr + 5);
-                *cur_preNode = (Int32)0;
-            }
-        }
-    }
-
-    class MemHelper
-    {
-        //// TOOLS contians: GET info from memory, INSERT infor to memory, node operation
-
-        #region GET info from memory
-
-        //pay attention: get cell and get struct is depend on different object
-
-        #endregion GET info from memory
-
-        #region INSERT infor to memory
-
 
         //insert list, must has enough space
         public delegate void InsertListPartPointer<T>(ref IntPtr memAddr, T input, ref IntPtr nextPartAddr, Int16 gap);
@@ -591,7 +545,7 @@ namespace ToyGE
         public static void InsertEntireList<T>(ref IntPtr memAddr, List<T> inputs, ref IntPtr nextPartAddr, Int16 tLength, Int16 gap, InsertListPart<T> insertListPart, InsertListPartPointer<T> insertListPartPointer)
         {
             //insert pointer
-            MemHelper.InsertValue(ref memAddr, (Int32)(nextPartAddr.ToInt64() - memAddr.ToInt64()));
+            MemInt32.SetValue(ref memAddr, (Int32)(nextPartAddr.ToInt64() - memAddr.ToInt64()));
 
             IntPtr lastAddr = new IntPtr(0);
             if (gap != 0)
@@ -656,6 +610,190 @@ namespace ToyGE
             //update nextPartAddr
             nextPartAddr = lastAddr;
         }
+    }
+
+    class MemFreeList
+    {
+        //temp, log free list
+        public static void ConsoleFree(IntPtr[] freeAdds)
+        {
+            for (int i = 0; i < freeAdds.Length; i++)
+            {
+                IntPtr first = freeAdds[i];
+                if (first.ToInt64() != 0)
+                {
+                    IntPtr curAddr = first;
+                    while (curAddr.ToInt64() != 0)
+                    {
+                        Console.WriteLine("Line:" + i + ",addr:" + curAddr);
+                        IntPtr nextAddr = GetFreeNext(curAddr);
+                        curAddr = nextAddr;
+                    }
+                }
+            }
+        }
+
+        //insert curAddr part into freeList linedlist with length
+        public static unsafe void InsertFreeList(IntPtr curAddr, Int16 length, IntPtr[] freeList)
+        {
+            //update curAddr's next and pre free part
+            UpdateFreeNext(curAddr, freeList[length]);
+            UpdateFreePre(curAddr, new IntPtr(0)); //insert 0 because curAddr is head
+
+            //update cur freeList head's pre
+            IntPtr nextFree = freeList[length];
+            if (nextFree.ToInt64() != 0)
+                UpdateFreePre(nextFree, curAddr);
+
+            //update freeList head
+            freeList[length] = curAddr;
+        }
+
+        //merge with next free part, next free part is close to cur free part
+        public static unsafe void MergeWithNext(IntPtr curAddr, IntPtr nextAddr, IntPtr[] freeAdds)
+        {
+            //get status
+            byte* status = (byte*)nextAddr.ToPointer();
+
+            if (MemStatus.GetIsDeleted(*status) == true)
+            {
+                //delete cur free part
+                DeleteFromFreelist(curAddr, freeAdds);
+
+                //delete next free part
+                DeleteFromFreelist(nextAddr, freeAdds);
+
+                //get new length
+                Int16 curLen = *(Int16*)(curAddr + sizeof(byte)).ToPointer();
+                Int16 nextLen = *(Int16*)(nextAddr + sizeof(byte)).ToPointer();
+                Int16 mergeLength = (Int16)(curLen + nextLen + sizeof(byte) + sizeof(Int16));
+
+                //update length
+                Int16* freeLenAddr = (Int16*)(curAddr + sizeof(byte));
+                *freeLenAddr = mergeLength;
+
+                //insert new one
+                InsertFreeList(curAddr, mergeLength, freeAdds);
+
+                //merge again
+                IntPtr nextNextAddr = GetFreeNext(curAddr);
+                if (nextNextAddr.ToInt64() != 0)
+                    MergeWithNext(curAddr, nextNextAddr, freeAdds);
+            }
+        }
+
+        //delete the part(curAddr) from the freeAddr
+        public static unsafe void DeleteFromFreelist(IntPtr curAddr, IntPtr[] freeAddr)
+        {
+            IntPtr freeNext = GetFreeNext(curAddr);
+            IntPtr freePre = GetFreePre(curAddr);
+            if (freePre.ToInt64() == 0)
+            {
+                Int16 length = *(Int16*)(curAddr + sizeof(byte)).ToPointer();
+                freeAddr[length] = curAddr;
+            }
+            else
+            {
+                UpdateFreeNext(freePre, freeNext);
+                if (freeNext.ToInt64() != 0)
+                    UpdateFreePre(freeNext, freePre);
+            }
+        }
+
+        //get free space from current memory block, return 0 if has not enough space
+        public static unsafe IntPtr GetFreeInBlock(IntPtr[] freeList, IntPtr headAddr, IntPtr tailAddr, Int64 blockLength, Int16 byteLength)
+        {
+            if (freeList[byteLength].ToInt64() != 0)
+            {
+                //get free addr
+                IntPtr result = freeList[byteLength];
+
+                //update freeList
+                freeList[byteLength] = GetFreeNext(result);
+
+                return result;
+            }
+            else if (headAddr.ToInt64() + blockLength - tailAddr.ToInt64() > byteLength)
+            {
+                return tailAddr;
+            }
+            else
+            {
+                return new IntPtr(0);
+            }
+        }
+
+        //update free part's freeNext, curAddr to nextAddr
+        static unsafe void UpdateFreeNext(IntPtr curAddr, IntPtr nextAddr)
+        {
+            IntPtr nextOffsetAddr = curAddr + sizeof(byte) + sizeof(Int16);
+            if (nextAddr.ToInt64() != 0)
+                MemInt32.SetValue(ref nextOffsetAddr, (Int32)(nextAddr.ToInt32() - nextOffsetAddr.ToInt32() - sizeof(Int32)));
+            else
+                MemInt32.SetValue(ref nextOffsetAddr, 0);
+        }
+
+        //update free part's freePre, curAddr to preAddr
+        static unsafe void UpdateFreePre(IntPtr curAddr, IntPtr preAddr)
+        {
+            IntPtr preOffsetAddr = curAddr + sizeof(byte) + sizeof(Int16) + sizeof(Int32);
+            if (preAddr.ToInt64() != 0)
+                MemInt32.SetValue(ref preOffsetAddr, (Int32)(preOffsetAddr.ToInt32() + sizeof(Int32) - preAddr.ToInt32()));
+            else
+                MemInt32.SetValue(ref preOffsetAddr, 0);
+        }
+
+        //get next free part
+        static unsafe IntPtr GetFreeNext(IntPtr freeAddr)
+        {
+            IntPtr nextOffsetAddr = freeAddr + sizeof(byte) + sizeof(Int16);
+            Int32 nextOffset = MemInt32.GetValue(ref nextOffsetAddr);
+            if (nextOffset == 0)
+                return new IntPtr(0);
+            return nextOffsetAddr + nextOffset;
+        }
+
+        //get pre free part
+        static unsafe IntPtr GetFreePre(IntPtr freeAddr)
+        {
+            IntPtr preOffsetAddr = freeAddr + sizeof(byte) + sizeof(Int16) + sizeof(Int32);
+            Int32 preOffset = MemInt32.GetValue(ref preOffsetAddr);
+            if (preOffset == 0)
+                return new IntPtr(0);
+            return preOffsetAddr - preOffset;
+        }
+    }
+
+    class MemCell
+    {
+        //update cell(updatingAddr) nextNode and preNode
+        public static unsafe void UpdateNextNode_PreNode(IntPtr updatingAddr, IntPtr preAddr)
+        {
+            if (preAddr.ToInt64() != 0)
+            {
+                Int32* pre_nextNode = (Int32*)(preAddr + 1);
+                *pre_nextNode = (Int32)(updatingAddr.ToInt64() - preAddr.ToInt64());
+
+                Int32* cur_preNode = (Int32*)(updatingAddr + 5);
+                *cur_preNode = (Int32)(updatingAddr.ToInt64() - preAddr.ToInt64());
+            }
+            else
+            {
+                Int32* cur_preNode = (Int32*)(updatingAddr + 5);
+                *cur_preNode = (Int32)0;
+            }
+        }
+    }
+
+    class MemHelper
+    {
+        //// TOOLS contians: GET info from memory, INSERT infor to memory, node operation
+
+        //pay attention: get cell and get struct is depend on different object
+
+        #region INSERT infor to memory
+
+
 
 
 
@@ -718,109 +856,6 @@ namespace ToyGE
         }
 
         #endregion INSERT infor to memory
-
-        #region UPDATE info
-        //update string, have found space
-        public static unsafe void UpdateString(IntPtr memAddr, string newString, IntPtr[] freeAdds)
-        {
-            IntPtr offsetMemAddr = GetOffsetAddr(ref memAddr);
-
-            byte* status = (byte*)(offsetMemAddr.ToPointer());
-            offsetMemAddr += 1;
-
-            Int16 length = GetInt16(ref offsetMemAddr);
-
-            byte hasNextMask = 0x40;
-            byte hasNext = (byte)(*status & hasNextMask);
-            if (hasNext > 0)
-            {
-                if (length > newString.Length)
-                {
-                    //delete nextPart
-                    IntPtr nextPartAddr = offsetMemAddr + length - sizeof(Int32);
-                    DeleteString(ref nextPartAddr, freeAdds);
-
-                    //insert status, hasNext=0
-                    *status = (byte)0x00;
-
-                    //insert curLength
-                    IntPtr curLengthAddr = offsetMemAddr + length - sizeof(Int16);
-                    InsertValue(ref curLengthAddr, (Int16)newString.Length);
-
-                    //insert content
-                    InsertChars(ref offsetMemAddr, newString);
-                }
-                else if (length == newString.Length)
-                {
-                    //delete nextPart
-                    IntPtr nextPartAddr = offsetMemAddr + length - sizeof(Int32);
-                    DeleteString(ref nextPartAddr, freeAdds);
-
-                    //insert status, hasNext=0, isFull=1
-                    *status = (byte)0x20;
-
-                    //insert content
-                    InsertChars(ref offsetMemAddr, newString);
-                }
-                else
-                {
-                    //insert status, hasNext=1
-                    *status = (byte)0x40;
-
-                    //nextPart
-                    IntPtr nextPartOffset = offsetMemAddr + length - sizeof(Int16);
-                    IntPtr nextPartAddr = nextPartOffset;
-                    nextPartAddr = GetOffsetAddr(ref nextPartAddr);
-
-                    //insert content
-                    string leftString = newString.Substring(0, length - sizeof(Int32));
-                    InsertChars(ref offsetMemAddr, leftString);
-
-                    string rigthtString = newString.Substring(length - sizeof(Int32), newString.Length - length + sizeof(Int32));
-                    UpdateString(nextPartOffset, rigthtString, freeAdds);
-                }
-            }
-            else
-            {
-                if (length > newString.Length)
-                {
-                    //insert status, isFull=0
-                    *status = (byte)0x00;
-
-                    //insert curLength
-                    IntPtr curLengthAddr = offsetMemAddr + length - sizeof(Int16);
-                    InsertValue(ref curLengthAddr, (Int16)newString.Length);
-
-                    //insert content
-                    InsertChars(ref offsetMemAddr, newString);
-                }
-                else if (length == newString.Length)
-                {
-                    //insert status, isFull=1
-                    *status = (byte)0x20;
-
-                    //insert content
-                    InsertChars(ref offsetMemAddr, newString);
-                }
-                else
-                {
-                    //insert status, hasNext=1
-                    *status = (byte)0x40;
-
-                    //nextPart
-                    IntPtr nextPartAddr = offsetMemAddr + length - sizeof(Int16);
-
-                    //insert content
-                    string leftString = newString.Substring(0, length - sizeof(Int32));
-                    InsertChars(ref offsetMemAddr, leftString);
-
-                    string rigthtString = newString.Substring(length - sizeof(Int32), newString.Length - length + sizeof(Int32));
-                    IntPtr nextSpace = GetFreeSpace((Int16)(rigthtString.Length + 3), freeAdds);
-                    InsertEntireString(ref nextPartAddr, rigthtString, ref nextSpace, 0);
-                }
-            }
-        }
-        #endregion UPDATE info
 
         #region DELETE info
 
@@ -898,46 +933,6 @@ namespace ToyGE
         }
 
         #endregion DELETE info
-
-        #region freeAddr operation
-
-        //get free space from free memory parts
-        public static unsafe IntPtr GetFreeSpace(Int16 byteLength, IntPtr[] freeAdds)
-        {
-            if (freeAdds[byteLength].ToInt64() != 0)
-            {
-                IntPtr result = freeAdds[byteLength];
-                freeAdds[byteLength] = GetFreeNext(result);
-                return result;
-            }
-            else
-            {
-                return new IntPtr(0);
-            }
-        }
-
-
-
-        public static void ConsoleFree(IntPtr[] freeAdds)
-        {
-            for (int i = 0; i < freeAdds.Length; i++)
-            {
-                IntPtr first = freeAdds[i];
-                if (first.ToInt64() != 0)
-                {
-                    IntPtr curAddr = first;
-                    while (curAddr.ToInt64() != 0)
-                    {
-                        Console.WriteLine("Line:" + i + ",addr:" + curAddr);
-                        IntPtr nextAddr = GetFreeNext(curAddr);
-                        curAddr = nextAddr;
-                    }
-
-                }
-            }
-        }
-
-        #endregion freeAddr operation
 
     }
 }

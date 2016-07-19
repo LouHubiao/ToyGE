@@ -22,9 +22,9 @@ Status表示数据当前的状态，Length表示存储数据的长度（byte为�
 
 memory struct:
 
-    string:     status(8)| length(16)| Body| [cruLength(16)]| [nextPart(32)]|
+    string:     status(8)| length(16)| Body| [curCount(16)]| [nextPart(32)]|
 
-    list:       status(8)| length(16)| Body| [cruLength(16)]| [nextPart(32)]|
+    list:       status(8)| length(16)| Body| [curCount(16)]| [nextPart(32)]|
 
     struct:     status(8)| Body|
 
@@ -193,6 +193,6 @@ ToyGE结构：
 
 3.如果删除的内存块体积无法放入nextFree和preFree，则不放入这些冗余数据，作为孤立的空闲内存，等待自动回收内存。（自动回收未完成）
 
-4.在update string和插入listPart过程中，如果没有多余的空闲内存，则将整个cell移动到memory blocks的末尾，并更新索引树。（未完成）
+4.在Update和Set过程中，如果当前block没有多余的空闲内存，则返回修改内存失败，由CellHelper寻求新的空闲空间，将整个cell移动到新的内存地址后，再执行更新内存操作，并更新索引树。（未完成）
 
 5.对于不同的schema，需要并发执行Load。（未完成）
