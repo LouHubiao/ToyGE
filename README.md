@@ -22,15 +22,15 @@ Status表示数据当前的状态，Length表示存储数据的长度（byte为�
 
 memory struct:
 
-    string:     status(8)| length(16)| Body| [curCount(16)]| [nextPart(32)]|
+    string:     status(8)| byteLength(16)| Body| [curCount(16)]| [nextPart(32)]|
 
-    list:       status(8)| length(16)| Body| [curCount(16)]| [nextPart(32)]|
+    list:       status(8)| byteLength(16)| Body| [curCount(16)]| [nextPart(32)]|
 
     struct:     status(8)| Body|
 
     cell:       status(8)| nextNode(32)| preNode(32)| Body|
 
-    deleted:    status(8)| length(16)| [freeNext(32)]| [freePre(32)]| ...|
+    deleted:    status(8)| byteLength(16)| [freeNext(32)]| [freePre(32)]| ...|
 
     status:     isDeleted| hasNext| isFull| IsLocked|...
 
