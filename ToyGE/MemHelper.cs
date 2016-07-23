@@ -614,17 +614,10 @@ namespace ToyGE
             MemStatus.SetIsDeleted(status, true);
             offsetMemAddr += 1;
 
-            //get string length: byte count
+            //get list length: byte count
             Int16 length = MemInt16.Get(ref offsetMemAddr);
 
-            //if has next part, recursion
-            if (MemStatus.GetHasNext(*status) == true)
-            {
-                IntPtr nextPartOffset = MemTool.GetNextOffsetAddr(offsetMemAddr, length);
-                Delete(ref nextPartOffset, freeList, deleteItem);
-            }
-
-            //insert list items context
+            //delete list items context
             if (MemStatus.GetIsFull(*status) == true)
             {
                 IntPtr lastAddr = offsetMemAddr + length;
@@ -642,22 +635,21 @@ namespace ToyGE
                 }
 
                 //delete next part
-                IntPtr nextPartOffset = lastAddr - sizeof(Int32);
-                Delete<T>(ref nextPartOffset, freeList, deleteItem);
+                Delete<T>(ref offsetMemAddr, freeList, deleteItem);
             }
             else
             {
-                IntPtr curLengthAddr = offsetMemAddr + length - sizeof(Int16);
-                Int16 curLength = MemInt16.Get(ref curLengthAddr);
+                IntPtr curCountAddr = offsetMemAddr + length - sizeof(Int16);
+                Int16 curCount = MemInt16.Get(ref curCountAddr);
 
-                IntPtr lastAddr = offsetMemAddr + curLength;
-                while (offsetMemAddr.ToInt64() < lastAddr.ToInt64())
+                //delete item
+                for(int i = 0; i < curCount; i++)
                 {
                     deleteItem(ref offsetMemAddr, freeList);
                 }
             }
 
-            //add to freeAddr[length]
+            //add to freeAddr[length] for next usage
             if (length >= 64)
             {
                 //insert content into freeAddr
@@ -670,8 +662,57 @@ namespace ToyGE
             //else drop and wait to auto GC
         }
 
-        public static void Add<T>(IntPtr cellAddr, T value, IntPtr[] freeAddrs, IntPtr tailAddr, int gap)
+        //add an item into list
+        public unsafe static void Add<T>(IntPtr memAddr, T item, IntPtr[] freeAddrs, IntPtr tailAddr, int gap, InsertItem_Object<T> insertItem_Object, InsertItem_Value<T> insertItem_Value)
         {
+            //get offseted addr
+            IntPtr offsetMemAddr = MemTool.GetOffsetedAddr(ref memAddr);
+
+            //change status isDelete=1
+            byte* status = (byte*)(offsetMemAddr.ToPointer());
+            offsetMemAddr += 1;
+
+            //get list length: byte count
+            Int16 length = MemInt16.Get(ref offsetMemAddr);
+
+            if (typeof(T).IsValueType)
+            {
+                if (MemStatus.GetIsFull(*status) == true)
+                {
+
+                }
+                else if (MemStatus.GetHasNext(*status) == true)
+                {
+                    IntPtr lastAddr = offsetMemAddr + length - sizeof(Int32);
+                    Add<T>(lastAddr, item, freeAddrs, tailAddr, gap, insertItem_Object, insertItem_Value);
+                }
+                else
+                {
+                    //get cur count
+                    IntPtr curCountAddr = offsetMemAddr + length - sizeof(Int16);
+                    Int16 curCount = MemInt16.Get(ref curCountAddr);
+
+                    //insert item into gap
+                    IntPtr addAddr = offsetMemAddr + curCount * Marshal.SizeOf<T>();
+                    insertItem_Value(ref addAddr, item);
+                }
+            }
+            else
+            {
+                if (MemStatus.GetIsFull(*status) == true)
+                {
+
+                }
+                else if (MemStatus.GetHasNext(*status) == true)
+                {
+
+                }
+                else
+                {
+
+                }
+            }
+
             if (typeof(T) != typeof(Int32) && typeof(T) != typeof(Int64))
             {
 
