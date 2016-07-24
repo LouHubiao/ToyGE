@@ -62,6 +62,24 @@ namespace ToyGE
         {
             memAddr += interval;
         }
+
+        //get byte length for list and string
+        public static unsafe Int16 GetByteLength<T>(Int16 count, Int16 gap)
+        {
+            Int16 byteLength = 0;
+            if (gap != 0)
+                count = (Int16)(count + gap + sizeof(Int16));
+
+            if (typeof(T).IsValueType)
+            {
+                byteLength = (Int16)(count * Marshal.SizeOf<T>() + (Marshal.SizeOf<T>() - sizeof(Int16) > 0 ? (Int16)(Marshal.SizeOf<T>() - sizeof(Int16)) : (Int16)0));
+            }
+            else
+            {
+                byteLength = (Int16)(count * sizeof(Int32) + sizeof(Int32) - sizeof(Int16));
+            }
+            return byteLength;
+        }
     }
 
     //byte operation
@@ -243,7 +261,8 @@ namespace ToyGE
         public static unsafe bool Insert(ref IntPtr memAddr, string content, IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr, Int64 blockLength, Int16 gap)
         {
             //get nextFreeAddr in this block
-            IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock<byte>(freeList, headAddr, ref tailAddr, blockLength, (Int16)content.Length, gap);
+            Int16 contentLength = MemTool.GetByteLength<byte>((Int16)content.Length, gap);
+            IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock<byte>(freeList, headAddr, ref tailAddr, blockLength, contentLength);
             if (nextFreeInBlock.ToInt64() == 0)
                 return false;   //update false
 
@@ -380,10 +399,11 @@ namespace ToyGE
                     //get nextPart offset addr
                     IntPtr nextPartAddr = MemTool.GetNextOffsetAddr(offsetMemAddr, length);
 
-                    //insert content, left into orig, right into next
+                    //insert content, left into orig
                     string leftString = newValue.Substring(0, length - sizeof(Int32));
                     InsertChars(ref offsetMemAddr, leftString);
 
+                    //insert content, right into next, return false if not success (part inserted)
                     newValue = newValue.Substring(length - sizeof(Int32));
                     if (Update(ref nextPartAddr, ref newValue, freeList, headAddr, ref tailAddr, blockLength, gap) == false)
                         return false;
@@ -552,48 +572,56 @@ namespace ToyGE
             return result;
         }
 
-        //insert list, must has enough space
+        //insert list, maybe failed and return false
         public static bool Insert<T>(ref IntPtr memAddr, List<T> inputs, IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr, Int64 blockLength, Int16 gap, InsertItem_Object<T> insertItem_Object, InsertItem_Value<T> insertItem_Value)
         {
-            //get nextFreeAddr in this block
-            IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock<T>(freeList, headAddr, ref tailAddr, blockLength, (Int16)inputs.Count, gap);
+            //get nextFreeAddr in this block, only for list, maybe not enough for items
+            Int16 contentLength = MemTool.GetByteLength<byte>((Int16)inputs.Count, gap);
+            IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock<T>(freeList, headAddr, ref tailAddr, blockLength, contentLength);
             if (nextFreeInBlock.ToInt64() == 0)
                 return false;   //update false
 
             //insert pointer
             MemInt32.Set(ref memAddr, (Int32)(nextFreeInBlock.ToInt64() - memAddr.ToInt64()));
 
-            //insert content
-            IntPtr lastAddr = new IntPtr(0);
-            if (gap != 0)
-            {
-                //insert insStatus, isFull=0
-                MemByte.Set(ref nextFreeInBlock, (byte)0x00);
+            //insert insStatus temp
+            MemByte.Set(ref nextFreeInBlock, (byte)0x00);
 
-                //insert length with gap
-                Int16 byteLength = MemFreeList.GetByteLength<T>((Int16)inputs.Count, gap);
-                MemInt16.Set(ref nextFreeInBlock, byteLength);
+            //insert length with gap
+            Int16 byteLength = MemFreeList.GetByteLength<T>((Int16)inputs.Count, gap);
+            MemInt16.Set(ref nextFreeInBlock, byteLength);
 
-                //insert curLength
-                MemTool.SetCurCount(nextFreeInBlock, byteLength, (Int16)inputs.Count);
-            }
-            else
-            {
-                //insert status, isFull=1
-                MemByte.Set(ref nextFreeInBlock, (byte)0x20);
-
-                //insert length with gap
-                Int16 byteLength = MemFreeList.GetByteLength<T>((Int16)inputs.Count, gap);
-                MemInt16.Set(ref nextFreeInBlock, byteLength);
-            }
+            //backup nextFreeInBlock
+            IntPtr nextFreeInBlockCopy = nextFreeInBlock;
 
             //insert list part context
             for (int i = 0; i < inputs.Count; i++)
             {
+                //update curLength, if faild, not delete inserted items
+                MemTool.SetCurCount(nextFreeInBlockCopy, byteLength, (Int16)i);
+
                 if (typeof(T).IsValueType)
-                    insertItem_Value(ref nextFreeInBlock, inputs[i]);
+                {
+                    if (insertItem_Value(ref nextFreeInBlock, inputs[i]) == false)
+                        return false;
+                }
                 else
-                    insertItem_Object(ref nextFreeInBlock, inputs[i], freeList, headAddr, ref tailAddr, blockLength, gap);
+                {
+                    if (insertItem_Object(ref nextFreeInBlock, inputs[i], freeList, headAddr, ref tailAddr, blockLength, gap) == false)
+                        return false;
+                }
+            }
+
+            //update infomation
+            if (gap != 0)
+            {
+                //insert curLength
+                MemTool.SetCurCount(nextFreeInBlockCopy, byteLength, (Int16)inputs.Count);
+            }
+            else
+            {
+                //update status, isFull=1
+                MemByte.Set(ref nextFreeInBlockCopy, (byte)0x20);
             }
 
             return true;
@@ -619,13 +647,13 @@ namespace ToyGE
             MemStatus.SetIsDeleted(status, true);
             offsetMemAddr += 1;
 
-            //get list length: byte count
-            Int16 length = MemInt16.Get(ref offsetMemAddr);
+            //get list byteLength
+            Int16 byteLength = MemInt16.Get(ref offsetMemAddr);
 
             //delete list items context
             if (MemStatus.GetIsFull(*status) == true)
             {
-                IntPtr lastAddr = offsetMemAddr + length;
+                IntPtr lastAddr = offsetMemAddr + byteLength;
                 while (offsetMemAddr.ToInt64() < lastAddr.ToInt64())
                 {
                     deleteItem(ref offsetMemAddr, freeList);
@@ -633,7 +661,7 @@ namespace ToyGE
             }
             else if (MemStatus.GetHasNext(*status) == true)
             {
-                IntPtr lastAddr = offsetMemAddr + length - sizeof(Int32);
+                IntPtr lastAddr = offsetMemAddr + byteLength - sizeof(Int32);
                 while (offsetMemAddr.ToInt64() < lastAddr.ToInt64())
                 {
                     deleteItem(ref offsetMemAddr, freeList);
@@ -644,7 +672,7 @@ namespace ToyGE
             }
             else
             {
-                IntPtr curCountAddr = offsetMemAddr + length - sizeof(Int16);
+                IntPtr curCountAddr = offsetMemAddr + byteLength - sizeof(Int16);
                 Int16 curCount = MemInt16.Get(ref curCountAddr);
 
                 //delete item
@@ -655,30 +683,30 @@ namespace ToyGE
             }
 
             //add to freeAddr[length] for next usage
-            if (length >= 64)
+            if (byteLength >= 64)
             {
                 //insert content into freeAddr
-                MemFreeList.InsertFreeList(contentBeginAddr, length, freeList);
+                MemFreeList.InsertFreeList(contentBeginAddr, byteLength, freeList);
 
                 //merge with after
-                IntPtr nextAddr = offsetMemAddr + length;
+                IntPtr nextAddr = offsetMemAddr + byteLength;
                 MemFreeList.MergeWithNext(contentBeginAddr, nextAddr, freeList);
             }
             //else drop and wait to auto GC
         }
 
-        //add an item into list, return 0 if not has enough free memory
+        //add an item into list, return 0 if not have enough free memory
         public unsafe static bool Add<T>(IntPtr memAddr, T item, IntPtr[] freeList, IntPtr headAddr, IntPtr tailAddr, Int64 blockLength, Int16 gap, InsertItem_Object<T> insertItem_Object, InsertItem_Value<T> insertItem_Value, GetItem<T> getItem)
         {
             //get offseted addr
             IntPtr offsetMemAddr = MemTool.GetOffsetedAddr(ref memAddr);
 
-            //change status isDelete=1
+            //get status
             byte* status = (byte*)(offsetMemAddr.ToPointer());
             offsetMemAddr += 1;
 
-            //get list length: byte count
-            Int16 length = MemInt16.Get(ref offsetMemAddr);
+            //get list byteLength
+            Int16 byteLength = MemInt16.Get(ref offsetMemAddr);
 
             //add content
             if (MemStatus.GetIsFull(*status) == true)
@@ -695,8 +723,9 @@ namespace ToyGE
                 if (nextFreeInBlock.ToInt64() == 0)
                     return false;   //update false
 
-                //backup nextFreeInBlock
-                IntPtr nextFreeInBlockCopy = nextFreeInBlock;
+                //update status isfull and hasNext
+                MemStatus.SetIsFull(status, false);
+                MemStatus.SetHasNext(status, true);
 
                 //insert new list status
                 if (gap == 0)
@@ -707,11 +736,17 @@ namespace ToyGE
                 //insert new list byteLength
                 MemInt16.Set(ref nextFreeInBlock, (Int16)((removeCount + 1 + gap) * Marshal.SizeOf<T>()));
 
+                //backup nextFreeInBlock
+                IntPtr nextFreeInBlockCopy = nextFreeInBlock;
+
                 //move to new list
-                IntPtr lastPtr = offsetMemAddr + length;
+                IntPtr lastPtr = offsetMemAddr + byteLength;
                 IntPtr removeBegin = lastPtr - removeCount * Marshal.SizeOf<T>();
                 while (removeBegin.ToInt64() < lastPtr.ToInt64())
                 {
+                    //update curLength, if faild, not delete inserted items
+                    MemTool.SetCurCount(nextFreeInBlockCopy, byteLength, (Int16)i);
+
                     T item_old = getItem(ref removeBegin);
                     if (typeof(T).IsValueType)
                         insertItem_Value(ref nextFreeInBlock, item_old);
@@ -720,13 +755,6 @@ namespace ToyGE
                 }
 
                 //insert new item
-
-                //update status isfull and hasNext
-                MemStatus.SetIsFull(status, false);
-                MemStatus.SetHasNext(status, true);
-
-                ////copy last items and new item to new list
-
 
 
                 //jump gap
@@ -743,13 +771,13 @@ namespace ToyGE
             }
             else if (MemStatus.GetHasNext(*status) == true)
             {
-                IntPtr lastAddr = offsetMemAddr + length - sizeof(Int32);
+                IntPtr lastAddr = offsetMemAddr + byteLength - sizeof(Int32);
                 Add<T>(lastAddr, item, freeList, headAddr, tailAddr, blockLength, gap, insertItem_Object, insertItem_Value, getItem);
             }
             else
             {
                 //get cur count
-                IntPtr curCountAddr = offsetMemAddr + length - sizeof(Int16);
+                IntPtr curCountAddr = offsetMemAddr + byteLength - sizeof(Int16);
                 IntPtr curCountAddrCopy = curCountAddr;
                 Int16 curCount = MemInt16.Get(ref curCountAddr);
 
@@ -765,7 +793,7 @@ namespace ToyGE
                     insertItem_Object(ref addAddr, item, freeList, headAddr, ref tailAddr, blockLength, gap);
                 }
 
-                //update curCount
+                //update curCount after inserted, maybe failed
                 MemInt16.Set(ref curCountAddrCopy, (Int16)(curCount + 1));
             }
 
@@ -861,30 +889,11 @@ namespace ToyGE
             }
         }
 
-        //get byte length for list(or string) 
-        public static unsafe Int16 GetByteLength<T>(Int16 count, Int16 gap)
-        {
-            Int16 byteLength = 0;
-            if (gap != 0)
-                count = (Int16)(count + gap + sizeof(Int16));
-
-            if (typeof(T).IsValueType)
-            {
-                byteLength = (Int16)(count * Marshal.SizeOf<T>());
-            }
-            else
-            {
-                byteLength = (Int16)(count * 32);
-            }
-            return byteLength;
-        }
-
         //get free space from current memory block, return 0 if has not enough space, only for stirng and list
-        public static unsafe IntPtr GetFreeInBlock<T>(IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr, Int64 blockLength, Int16 count, Int16 gap)
+        public static unsafe IntPtr GetFreeInBlock<T>(IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr, Int64 blockLength, Int16 contentLength)
         {
             //get byte length
-            Int16 byteLength = GetByteLength<T>(count, gap);
-            Int16 fullLength = (Int16)(sizeof(byte) + sizeof(Int16) + byteLength);
+            Int16 fullLength = (Int16)(sizeof(byte) + sizeof(Int16) + contentLength);
 
             if (freeList[fullLength].ToInt64() != 0)
             {
