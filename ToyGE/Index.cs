@@ -1,17 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 
-/*
-* test 10000000 node insert, 13s:
-    Console.WriteLine(DateTime.Now.ToString());
-    BTreeNode b = BTree.BTCreate();
-    for (int i = 0; i < 10000000; i += 2)
-    {
-        BTree.BTInsert(b, i, i);
-    }
-    Console.WriteLine(DateTime.Now.ToString());
-*/
-
 namespace ToyGE
 {
     class BTreeNode<T>

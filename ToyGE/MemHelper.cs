@@ -20,9 +20,10 @@ status:
 
 namespace ToyGE
 {
+    //this class is for the usual tool about memory management
     class MemTool
     {
-        //Get next addr by offset, offset is from memAddr + sizeof(Int32) !
+        //Get next address by offset, return addr pointer, offset is from memAddr + sizeof(Int32)
         public static unsafe IntPtr GetOffsetedAddr(ref IntPtr memAddrBeforeOffset)
         {
             Int32 offset = MemInt32.Get(ref memAddrBeforeOffset);
@@ -30,16 +31,16 @@ namespace ToyGE
             return memAddrBeforeOffset + offset;
         }
 
-        //get nextOffset(Int32) addr at tail
-        public static unsafe IntPtr GetNextOffsetAddr(IntPtr memAddrAfterLength, Int16 length)
+        //get nextOffset(Int32) address at the tail
+        public static unsafe IntPtr GetNextOffsetAddr(IntPtr memAddr, Int16 length)
         {
-            return memAddrAfterLength + length - sizeof(Int32);
+            return memAddr + length - sizeof(Int32);
         }
 
         //set nextOffset(Int32) at tail
-        public static unsafe void SetNextOffsetAddr(IntPtr memAddrAfterLength, Int16 length, Int32 nextOffset)
+        public static unsafe void SetNextOffsetAddr(IntPtr memAddr, Int16 length, Int32 nextOffset)
         {
-            IntPtr curLengthAddr = memAddrAfterLength + length - sizeof(Int32);
+            IntPtr curLengthAddr = memAddr + length - sizeof(Int32);
             MemInt32.Set(ref curLengthAddr, nextOffset);
         }
 
@@ -256,7 +257,7 @@ namespace ToyGE
         }
 
         //insert Entire string, must has enough space
-        public static unsafe bool Insert(ref IntPtr memAddr, string content, IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr, Int64 blockLength, Int16 gap)
+        public static unsafe bool Insert(ref IntPtr memAddr, string content, IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr, Int32 blockLength, Int16 gap)
         {
             //get nextFreeAddr in this block
             Int16 fullLength = (Int16)(sizeof(byte) + sizeof(Int16) + MemTool.GetByteLength<byte>((Int16)content.Length, gap) + gap == 0 ? 0 : sizeof(Int16));
@@ -514,6 +515,7 @@ namespace ToyGE
         }
     }
 
+    //list operation
     class MemList
     {
         //delegates
@@ -571,7 +573,7 @@ namespace ToyGE
         }
 
         //insert list, maybe failed and return false
-        public static bool Insert<T>(ref IntPtr memAddr, List<T> inputs, IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr, Int64 blockLength, Int16 gap, InsertItem_Object<T> insertItem_Object, InsertItem_Value<T> insertItem_Value)
+        public static bool Insert<T>(ref IntPtr memAddr, List<T> inputs, IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr, Int32 blockLength, Int16 gap, InsertItem_Object<T> insertItem_Object, InsertItem_Value<T> insertItem_Value)
         {
             //get nextFreeAddr in this block, only for list, maybe not enough for items
             Int16 byteLength = (Int16)(MemTool.GetByteLength<byte>((Int16)inputs.Count, gap) + gap == 0 ? 0 : sizeof(Int16));
@@ -694,7 +696,7 @@ namespace ToyGE
         }
 
         //add an item into list, return 0 if not have enough free memory
-        public unsafe static bool Add<T>(IntPtr memAddr, T item, IntPtr[] freeList, IntPtr headAddr, IntPtr tailAddr, Int64 blockLength, Int16 gap, InsertItem_Object<T> insertItem_Object, InsertItem_Value<T> insertItem_Value, GetItem<T> getItem)
+        public unsafe static bool Add<T>(IntPtr memAddr, T item, IntPtr[] freeList, IntPtr headAddr, IntPtr tailAddr, Int32 blockLength, Int16 gap, InsertItem_Object<T> insertItem_Object, InsertItem_Value<T> insertItem_Value, GetItem<T> getItem)
         {
             //get offseted addr
             IntPtr offsetMemAddr = MemTool.GetOffsetedAddr(ref memAddr);
@@ -839,6 +841,7 @@ namespace ToyGE
         //remove an item by index from list
     }
 
+    //free memory operation
     class MemFreeList
     {
         //temp, log free list
@@ -928,7 +931,7 @@ namespace ToyGE
         }
 
         //get free space from current memory block, return 0 if has not enough space, only for stirng and list
-        public static unsafe IntPtr GetFreeInBlock<T>(IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr, Int64 blockLength, Int16 fullLength)
+        public static unsafe IntPtr GetFreeInBlock<T>(IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr, Int32 blockLength, Int16 fullLength)
         {
             if (freeList[fullLength].ToInt64() != 0)
             {
@@ -994,6 +997,7 @@ namespace ToyGE
         }
     }
 
+    //cell operation
     class MemCell
     {
         //update cell(updatingAddr) nextNode and preNode
@@ -1013,5 +1017,15 @@ namespace ToyGE
                 *cur_preNode = (Int32)0;
             }
         }
+    }
+
+    //block operation
+    class MemBlock
+    {
+        public IntPtr headAddr;
+        public IntPtr tailAddr;
+        public Int32 blockLength;
+
+
     }
 }
