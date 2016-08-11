@@ -33,7 +33,7 @@ using System.Text;
 
 namespace ToyGE
 {
-    public class JSONBack
+    public class TX
     {
         [JsonProperty("CellID")]
         public Int64 CellID;
@@ -45,7 +45,7 @@ namespace ToyGE
         public Int64 time;
 
         [JsonProperty("ins")]
-        public List<Input> ins;
+        public List<In> ins;
 
         [JsonProperty("outs")]
         public List<string> outs;
@@ -54,18 +54,18 @@ namespace ToyGE
         public Int64 amount;
 
         //convert to jsonback from a string
-        public static JSONBack ConvertStringToJSONBack(string jsonStr)
+        public static TX ConvertStringToJSONBack(string jsonStr)
         {
-            JSONBack JSONBack = new JSONBack();
+            TX tx = new TX();
             try
             {
-                JSONBack = JsonConvert.DeserializeObject<JSONBack>(jsonStr);
+                tx = JsonConvert.DeserializeObject<TX>(jsonStr);
             }
             catch (Exception e)
             {
                 return null;
             }
-            return JSONBack;
+            return tx;
         }
 
         public int GetLength()
@@ -73,7 +73,7 @@ namespace ToyGE
             int result = 0;
             result += 45;
             result += 3 + this.hash.Length;
-            foreach(Input _in in this.ins)
+            foreach(In _in in this.ins)
             {
                 result += _in.addr.Length;
                 result += 8;
@@ -97,7 +97,7 @@ namespace ToyGE
             strBuilder.Append(",\"time\":");
             strBuilder.Append(this.time);
             strBuilder.Append(",\"ins\":[");
-            foreach (Input _in in this.ins)
+            foreach (In _in in this.ins)
             {
                 strBuilder.Append("{\"addr\":");
                 strBuilder.Append(this.time);
@@ -119,9 +119,9 @@ namespace ToyGE
         }
     }
 
-    public class Input
+    public class In
     {
-        public Input(string _addr, Int64 _tx_index)
+        public In(string _addr, Int64 _tx_index)
         {
             this.addr = _addr;
             this.tx_index = _tx_index;

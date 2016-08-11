@@ -8,18 +8,28 @@ namespace ToyGE
 {
     class Statistic
     {
-        public static unsafe bool Amount_Statistic(IntPtr curAddr, Int64 stdAmount, Int64 noUse)
+        public static unsafe bool Amount_Statistic(IntPtr curAddr)
         {
-            Int64* amount = (Int64*)((curAddr + 37).ToPointer());
-            if (*amount >= stdAmount)
+            byte status = MemByte.Get(ref curAddr);
+            byte mask = 0x80;
+            if ((status & mask) != 0)
+                return false;
+
+            Int64* amount = (Int64*)((curAddr + 28).ToPointer());
+            if (*amount >= 1000000000)
             {
                 return true;
             }
             return false;
         }
 
-        public static unsafe bool Count_Statistic(IntPtr curAddr, Int64 noUse1, Int64 noUse2)
+        public static unsafe bool Count_Statistic(IntPtr curAddr)
         {
+            //judge isDeleted
+            byte status = MemByte.Get(ref curAddr);
+            byte mask = 0x80;
+            if ((status & mask) != 0)
+                return false;
             return true;
         }
     }

@@ -28,7 +28,7 @@ memory struct:
 
     struct:     status(8)| Body|
 
-    cell:       status(8)| nextNode(32)| preNode(32)| Body|
+    cell:       status(8)| Body|
 
     deleted:    status(8)| byteLength(16)| [freeNext(32)]| [freePre(32)]| ...|
 
@@ -120,8 +120,6 @@ ToyGE结构：
 
     Tx {
         status      byte
-        nextNode    int32   // next node
-        preNode     int32   // pre node
         CellID      Int64
         hash        int32   // =>hash
         time        Int64

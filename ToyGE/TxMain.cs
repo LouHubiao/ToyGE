@@ -49,7 +49,7 @@ namespace ToyGE
         static int curBlockIndex = 0;
 
         //insert one node into memory and b-tree
-        public static void InsertTx_Cell_Index(Int64 cellID ,JSONBack jsonBack)
+        public static void InsertTx_Cell_Index(Int64 cellID ,TX jsonBack)
         {
             if (blockAddrs.Count == 0 )
             {
@@ -108,21 +108,21 @@ namespace ToyGE
             hashTree.BTInsert(ref hashTree.root, cellID, curAddr);
         }
 
-        static void insertCell(JSONBack jsonBack)
+        static void insertCell(TX jsonBack)
         {
             TxHelper.InsertCell(jsonBack, ref curAddr, ref preAddr, gap);
             blockCounts[curBlockIndex]++;
         }
 
         //search node by key
-        public static JSONBack SearchNode(Int64 key)
+        public static TX SearchNode(Int64 key)
         {
             IntPtr node = new IntPtr();
             if (hashTree.BTSearch(hashTree.root, key, ref node))
             {
                 if (!MemHelper.IsDeleted(node))
                 {
-                    JSONBack result = TxHelper.GetCell(node);
+                    TX result = TxHelper.GetCell(node);
                     return result;
                 }
             }

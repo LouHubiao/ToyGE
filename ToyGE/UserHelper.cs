@@ -72,7 +72,7 @@ namespace ToyGE
 
             //delete txs
             IntPtr outsAddr = memAddr + 9;
-            MemHelper.DeleteList<Input>(ref outsAddr, freeAddrs, null);
+            MemHelper.DeleteList<In>(ref outsAddr, freeAddrs, null);
 
             //update cell link list
             int length = 13;

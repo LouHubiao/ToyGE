@@ -1,12 +1,11 @@
 ﻿using System;
+using System.Collections.Generic;
 
 /*	
     In Memory:
 
     Tx {
         status      byte
-        nextNode    int32   // next node
-        preNode     int32   // pre node
         CellID      Int64
         hash        int32   // =>hash
         time        Int64
@@ -67,169 +66,256 @@ namespace ToyGE
 {
     public class TxHelper
     {
-        //convert memory Tx to jsonback object for random access
-        public static JSONBack GetCell(IntPtr jsonBackAddr)
-        {
-            JSONBack jsonBack = new JSONBack();
+        #region search operation
 
-            // jump cellStatus/ cellNextNode/ cellPreNode
-            MemHelper.addrJump(ref jsonBackAddr, 9);
+        //convert memory Tx to object for random access
+        public static bool Get(Int64 key, Dictionary<Int16, MachineIndex<Int64>> machineIndex, out TX tx)
+        {
+            //get tx Addr
+            IntPtr cellAddr;
+            Block<Int64> block;
+            if (Machines<Int64>.Get(machineIndex, key, Compare.CompareInt64, out cellAddr, out block) == false)
+            {
+                tx = null;
+                return false;
+            }
+
+            //get cell
+            tx = new TX();
+
+            // judge isDelete
+            byte status = MemByte.Get(ref cellAddr);
+            byte mask = 0x80;
+            if ((status & mask) != 0)
+            {
+                tx = null;
+                return false;
+            }
 
             //read cellID
-            jsonBack.CellID = MemHelper.GetInt64(ref jsonBackAddr);
+            tx.CellID = MemInt64.Get(ref cellAddr);
 
             //read hash
-            jsonBack.hash = MemHelper.GetString(ref jsonBackAddr);
+            tx.hash = MemString.Get(ref cellAddr);
 
             //read time
-            jsonBack.time = MemHelper.GetInt64(ref jsonBackAddr);
+            tx.time = MemInt64.Get(ref cellAddr);
 
             //read ins
-            jsonBack.ins = MemHelper.GetList<Input>(ref jsonBackAddr, GetIn);
+            tx.ins = MemList.Get<In>(ref cellAddr, GetIn);
 
             //read outs
-            jsonBack.outs = MemHelper.GetList<string>(ref jsonBackAddr, MemHelper.GetString);
+            tx.outs = MemList.Get<string>(ref cellAddr, MemString.Get);
 
             //time amount
-            jsonBack.amount = MemHelper.GetInt64(ref jsonBackAddr);
+            tx.amount = MemInt64.Get(ref cellAddr);
 
-            return jsonBack;
+            return true;
         }
 
         //get In struct
-        public static Input GetIn(ref IntPtr inAddr)
+        public static In GetIn(ref IntPtr inAddr)
         {
-            IntPtr offsetMemAddr = MemHelper.GetOffsetAddr(ref inAddr);
+            IntPtr offsetMemAddr = MemTool.GetOffsetedAddr(ref inAddr);
 
-            byte status = MemHelper.GetByte(ref offsetMemAddr);
+            byte status = MemByte.Get(ref offsetMemAddr);
 
-            string addr = MemHelper.GetString(ref offsetMemAddr);
+            string addr = MemString.Get(ref offsetMemAddr);
 
-            Int64 tx_index = MemHelper.GetInt64(ref offsetMemAddr);
+            Int64 tx_index = MemInt64.Get(ref offsetMemAddr);
 
-            return new Input(addr, tx_index);
+            return new In(addr, tx_index);
         }
 
-        //convert jsonback to byte[] in memory
-        public static void InsertCell(JSONBack jsonBack, ref IntPtr memAddr, ref IntPtr preAddr, Int16 gap)
-        {
-            //update nextNode and preNode
-            MemHelper.UpdateNextNode_PreNode(memAddr, preAddr);
-            preAddr = memAddr;
+        #endregion search operation
 
-            //pointer for insert unsure length type, 45 is the length of tx
-            IntPtr nextPartAddr = memAddr + 45;
+
+        #region insert operation
+        //convert object to byte[] in memory
+        public static bool Set(TX tx, Dictionary<Int16, MachineIndex<Int64>> machineIndex, Int16 gap)
+        {
+            //get block info
+            IntPtr cellAddr;
+            Block<Int64> block;
+            Machines<Int64>.Get(machineIndex, tx.CellID, Compare.CompareInt64, out cellAddr, out block);
+
+            //if has cell, update it
+            if (cellAddr != IntPtr.Zero)
+            {
+                //update
+            }
+
+            //judge if has enough space for just cell 37
+            IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock<byte>(block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, 37);
+            if (nextFreeInBlock.ToInt64() == 0)
+                return false;   //update false
+
+            B_Tree<Int64, IntPtr>.Insert(ref block.blockIndex.root, tx.CellID, nextFreeInBlock, Compare.CompareInt64);
+
+            //pointer for insert unsure length type, 37 is the length of tx
+            IntPtr nextPartAddr = nextFreeInBlock + 37;
 
             //insert cellStatus
-            MemHelper.InsertValue(ref memAddr, (byte)0);
-
-            //jump nextNode and preNode, has updated
-            MemHelper.addrJump(ref memAddr, 8);
+            MemByte.Set(ref nextFreeInBlock, (byte)0);
 
             //insert CellID
-            MemHelper.InsertValue(ref memAddr, jsonBack.CellID);
+            MemInt64.Set(ref nextFreeInBlock, tx.CellID);
 
             //insert hash(X)
-            MemHelper.InsertEntireString(ref memAddr, jsonBack.hash, ref nextPartAddr, gap);
+            MemString.Set(ref nextFreeInBlock, tx.hash, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap);
 
             //insert time
-            MemHelper.InsertValue(ref memAddr, jsonBack.time);
+            MemInt64.Set(ref nextFreeInBlock, tx.time);
 
             //insert ins(X)
-            MemHelper.InsertEntireList<Input>(ref memAddr, jsonBack.ins, ref nextPartAddr, sizeof(Int32), gap, null, InsertIn);
+            MemList.Set<In>(ref nextFreeInBlock, tx.ins, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap, InsertIn, null);
 
             //insert outs(X)
-            MemHelper.InsertEntireList(ref memAddr, jsonBack.outs, ref nextPartAddr, sizeof(Int32), gap, null, MemHelper.InsertEntireString);
+            MemList.Set<string>(ref nextFreeInBlock, tx.outs, block.freeList, block.headAddr, ref block.tailAddr, block.blockLength, gap, MemString.Set, null);
 
             //insert amount
-            MemHelper.InsertValue(ref memAddr, jsonBack.amount);
+            MemInt64.Set(ref nextFreeInBlock, tx.amount);
 
-            memAddr = nextPartAddr;
+            return true;
         }
 
         //insert In struct
-        static void InsertIn(ref IntPtr memAddr, Input input, ref IntPtr nextPartAddr, Int16 gap)
+        static bool InsertIn(ref IntPtr memAddr, In input, IntPtr[] freeList, IntPtr headAddr, ref IntPtr tailAddr, Int32 blockLength, Int16 gap)
         {
+            //judge if has enough space for just cell 13
+            IntPtr nextFreeInBlock = MemFreeList.GetFreeInBlock<byte>(freeList, headAddr, ref tailAddr, blockLength, 13);
+            if (nextFreeInBlock.ToInt64() == 0)
+                return false;   //update false
+
             //insert pointer
-            MemHelper.InsertValue(ref memAddr, (Int32)(nextPartAddr.ToInt64() - memAddr.ToInt64()));
+            MemInt32.Set(ref memAddr, (Int32)(nextFreeInBlock.ToInt64() - memAddr.ToInt64() - sizeof(Int32)));
 
             //struct length
-            IntPtr nextNextPartAddr = nextPartAddr + 13;
+            IntPtr nextNextPartAddr = nextFreeInBlock + 13;
 
             //insert inStatus
-            MemHelper.InsertValue(ref nextPartAddr, (byte)0);
+            MemByte.Set(ref nextFreeInBlock, (byte)0);
 
             //insert in_addr
-            MemHelper.InsertEntireString(ref nextPartAddr, input.addr, ref nextNextPartAddr, gap);
+            MemString.Set(ref nextFreeInBlock, input.addr, freeList, headAddr, ref tailAddr, blockLength, gap);
 
             //insert tx_index
-            MemHelper.InsertValue(ref nextPartAddr, input.tx_index);
+            MemInt64.Set(ref nextFreeInBlock, input.tx_index);
 
-            nextPartAddr = nextNextPartAddr;
+            return true;
         }
+        #endregion insert operation
 
-        //insert out string
-        public static unsafe void InsertOut(IntPtr memAddr, string _out, ref IntPtr nextPartAddr, Int16 gap)
-        {
-            MemHelper.InsertEntireString(ref memAddr, _out, ref nextPartAddr, gap);
-        }
-
+        #region delete operation
         //delete tx cell
-        public static unsafe void DeleteCell(IntPtr memAddr, IntPtr[] freeAddrs)
+        public static unsafe bool Delete(Int64 key, Dictionary<Int16, MachineIndex<Int64>> machineIndex)
         {
+            //get tx Addr
+            IntPtr cellAddr;
+            Block<Int64> block;
+            if (Machines<Int64>.Get(machineIndex, key, Compare.CompareInt64, out cellAddr, out block) == false)
+            {
+                return false;
+            }
+
             //update status IsDelete=1
-            IntPtr statusAddr = memAddr;
-            byte* status = (byte*)(statusAddr.ToPointer());
+            IntPtr memAddrCopy = cellAddr;
+            byte* status = (byte*)(memAddrCopy.ToPointer());
             byte mask = 0x80;
             *status = (byte)(*status | mask);
 
+            //jump status and CellID
+            memAddrCopy = memAddrCopy + 1 + 8;
+
             //delete hash
-            IntPtr hashAddr = memAddr + 17;
-            MemHelper.DeleteString(ref hashAddr, freeAddrs);
+            MemString.Delete(ref memAddrCopy, block.freeList);
+
+            //jump time
+            memAddrCopy = memAddrCopy + 8;
 
             //delete ins
-            IntPtr insAddr = memAddr + 29;
-            MemHelper.DeleteList<Input>(ref insAddr, freeAddrs, DeleteIn);
+            MemList.Delete<In>(ref memAddrCopy, block.freeList, DeleteIn);
 
-            //delete outs
-            IntPtr outsAddr = memAddr + 33;
-            MemHelper.DeleteList<Input>(ref outsAddr, freeAddrs, MemHelper.DeleteString);
+            ////update cell link list
+            //int length = 44;
+            //if (length >= 64)
+            //{
+            //    IntPtr nextAddr = new IntPtr(memAddr.ToInt64() + *(Int32*)(memAddr + 1));
+            //    Int32 preOffset = *(Int32*)(memAddr + 5);
+            //    IntPtr preAddr = preOffset == 0 ? new IntPtr(0) : new IntPtr(memAddr.ToInt64() - preOffset);
+            //    MemCell.UpdateNextNode_PreNode(nextAddr, preAddr);
+            //}
 
-
-            //update cell link list
-            int length = 44;
-            if (length >= 64)
-            {
-                IntPtr nextAddr = new IntPtr(memAddr.ToInt64() + *(Int32*)(memAddr + 1));
-                Int32 preOffset = *(Int32*)(memAddr + 5);
-                IntPtr preAddr = preOffset == 0 ? new IntPtr(0) : new IntPtr(memAddr.ToInt64() - preOffset);
-                MemHelper.UpdateNextNode_PreNode(nextAddr, preAddr);
-            }
+            return true;
         }
 
         public static void DeleteIn(ref IntPtr memAddr, IntPtr[] freeAddrs)
         {
-            IntPtr offsetMemAddr = MemHelper.GetOffsetAddr(ref memAddr);
+            IntPtr offsetMemAddr = MemTool.GetOffsetedAddr(ref memAddr);
+
+            //jump status
+            offsetMemAddr = offsetMemAddr + 1;
 
             //delete in_addr
-            IntPtr in_addr = offsetMemAddr + 1;
-            MemHelper.DeleteString(ref in_addr, freeAddrs);
+            MemString.Delete(ref offsetMemAddr, freeAddrs);
+        }
+        #endregion delete operation
+
+        #region foreach
+        //foreach the index fo statistic
+        public static int Foreach(Dictionary<Int16, MachineIndex<Int64>> machineIndex, Delegate<Int64>.Statistic statistic)
+        {
+            int result = 0;
+            foreach (MachineIndex<Int64> index in machineIndex.Values)
+            {
+                Block<Int64> block = index.block;
+                Node<Int64, IntPtr> node = block.blockIndex.root;
+                result += BTreeForeach(node, statistic);
+            }
+            return result;
         }
 
+        //walking btree
+        static int BTreeForeach(Node<Int64, IntPtr> node, Delegate<Int64>.Statistic statistic)
+        {
+            if (node == null || node.keys.Count == 0)
+            {
+                return 0;
+            }
+
+            int result = 0;
+            for (int i = 0; i < node.keys.Count; i++)
+            {
+                if (statistic(node.values[i]) == true)
+                {
+                    result++;
+                }
+
+                if (node.kids.Count > i)
+                    result += BTreeForeach(node.kids[i], statistic);
+            }
+            if (node.kids.Count > node.keys.Count)
+                result += BTreeForeach(node.kids[node.keys.Count], statistic);
+            return result;
+        }
+        #endregion foreach
+
+        #region update operation
         //update hash
-        public static unsafe void UpdateHash(IntPtr memAddr, string newHash, IntPtr[] freeAdds)
-        {
-            //pointer for hash
-            memAddr += 17;
-            MemHelper.UpdateString(memAddr, newHash, freeAdds);
-        }
+        //public static unsafe void UpdateHash(IntPtr memAddr, string newHash, IntPtr[] freeAdds)
+        //{
+        //    //pointer for hash
+        //    memAddr += 17;
+        //    MemString.Update(memAddr, newHash, freeAdds);
+        //}
 
-        //update amount
-        public static unsafe void UpdateAmount(IntPtr memAddr, Int64 newAmount)
-        {
-            //pointer for amount
-            memAddr += 37;
-            MemHelper.InsertValue(ref memAddr, newAmount);
-        }
+        ////update amount
+        //public static unsafe void UpdateAmount(IntPtr memAddr, Int64 newAmount)
+        //{
+        //    //pointer for amount
+        //    memAddr += 37;
+        //    MemHelper.InsertValue(ref memAddr, newAmount);
+        //}
+        #endregion update operation
     }
 }
